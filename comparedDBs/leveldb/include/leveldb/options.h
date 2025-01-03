@@ -154,6 +154,9 @@ struct LEVELDB_EXPORT Options {
   std::string percentages;
 
   //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
+
+  int factor = 2;
+  int L0_base = 2000;
   
 };
 

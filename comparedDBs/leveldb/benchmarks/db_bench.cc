@@ -1377,6 +1377,12 @@ class Benchmark {
     options.hot_file_path = FLAGS_hot_file;
     options.percentages = FLAGS_percentages;
 
+    std::fprintf(stdout, "some command parameters have been selected:\n");
+    std::fprintf(stdout, "  The factor is %d\n",options.factor);
+    std::fprintf(stdout, "  The C0 base is: %d MiB\n", options.L0_base);
+    std::fprintf(stdout, "------------------------------------------------\n");
+    
+
     std::fprintf(stderr, "open dbs:in Open()\n");
     fflush(stderr);
     Status s = DB::Open(options, FLAGS_db, &db_);

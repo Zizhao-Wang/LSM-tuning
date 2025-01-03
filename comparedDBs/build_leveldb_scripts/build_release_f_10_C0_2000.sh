@@ -1,0 +1,70 @@
+#!/bin/bash
+
+# 构建脚本：build_release_f_10_C0_2000.sh
+# 用途：为 LevelDB 生成 C0=2000 的构建配置，并记录构建日志
+
+# 获取脚本所在目录的绝对路径
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# 定义构建目录的绝对路径
+BUILD_DIR="${SCRIPT_DIR}/../leveldb/build_release_f_10_C0_2000"
+
+# 检查并删除现有的构建目录
+if [ -d "$BUILD_DIR" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Removing existing directory: $BUILD_DIR"
+    rm -rf "$BUILD_DIR"
+    if [ $? -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to remove directory: $BUILD_DIR"
+        exit 1
+    fi
+fi
+
+# 创建新的构建目录
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Creating directory: $BUILD_DIR"
+mkdir -p "$BUILD_DIR"
+if [ $? -ne 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to create directory: $BUILD_DIR"
+    exit 1
+fi
+
+# 定义日志文件路径
+LOG_FILE="${BUILD_DIR}/build_info.txt"
+
+# 初始化日志文件
+echo "Build Script: build_release_f_10_C0_2000.sh" > "$LOG_FILE"
+echo "Build Configuration: C0=2000, CMAKE_BUILD_TYPE=Debug" >> "$LOG_FILE"
+echo "Start Time: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
+echo "-----------------------------------------" >> "$LOG_FILE"
+
+# 进入构建目录，配置并编译
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Configuring and building for C0=2000"
+cd "$BUILD_DIR" || { echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to enter directory: $BUILD_DIR" | tee -a "$LOG_FILE"; exit 1; }
+
+# 执行构建命令，并将输出追加到日志文件
+cmake -DCMAKE_BUILD_TYPE=Debug .. >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] CMake configuration failed." | tee -a "$LOG_FILE"
+    echo "End Time: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
+    echo "Build Status: Failed" >> "$LOG_FILE"
+    echo "-----------------------------------------" >> "$LOG_FILE"
+    exit 1
+fi
+
+make -j32 >> "$LOG_FILE" 2>&1
+if [ $? -ne 0 ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Make build failed." | tee -a "$LOG_FILE"
+    echo "End Time: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
+    echo "Build Status: Failed" >> "$LOG_FILE"
+    echo "-----------------------------------------" >> "$LOG_FILE"
+    exit 1
+fi
+
+echo "[$(date '+%Y-%m-%d %H:%M:%S')] Build succeeded for C0=2000" | tee -a "$LOG_FILE"
+
+# 记录完成时间和状态
+echo "End Time: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
+echo "Build Status: Success" >> "$LOG_FILE"
+echo "-----------------------------------------" >> "$LOG_FILE"
+
+# 返回原始目录
+cd "${SCRIPT_DIR}/../../"
