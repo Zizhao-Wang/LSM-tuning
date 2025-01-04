@@ -63,7 +63,7 @@ for i in {10..10}; do
                     echo "$num_format"
 
                     # 创建相应的目录
-                    db_dir="/mnt/db_test/LSM-tuning/level10B/C0_${level1base}/leveldb_f${F}_${zipf_a}_mem${buffer_size_mb}MiB_level1base_${level1base}"
+                    db_dir="/mnt/db_test/LSM-tuning/level10/C0_${level1base}/leveldb_f${F}_${zipf_a}_mem${buffer_size_mb}MiB_level1base_${level1base}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -78,7 +78,7 @@ for i in {10..10}; do
                     iostat -d 100 -x $DEVICE_NAME > leveldbf${F}_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_IOstats_factor${F}_level1base${level1base}MiB.log &
                     PID_IOSTAT=$!
                         
-                    cgexec -g memory:group16 ../../../leveldb/build_release_f_10_C0_1000/db_bench \
+                    cgexec -g memory:group16 ../../../leveldb/build_release_f_10_C0_${level1base}/db_bench \
                         --db=$db_dir \
                         --num=$num_entries \
                         --value_size=$value_size \

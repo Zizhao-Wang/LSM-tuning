@@ -66,5 +66,22 @@ echo "End Time: $(date '+%Y-%m-%d %H:%M:%S')" >> "$LOG_FILE"
 echo "Build Status: Success" >> "$LOG_FILE"
 echo "-----------------------------------------" >> "$LOG_FILE"
 
+
+# 新增功能：将 version_set.cc 的前100行代码追加到 LOG_FILE
+VERSION_SET_FILE="${SCRIPT_DIR}/../leveldb/db/version_set.cc"
+
+if [ -f "$VERSION_SET_FILE" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Appending first 100 lines of version_set.cc to LOG_FILE" | tee -a "$LOG_FILE"
+    echo "----- First 100 lines of version_set.cc -----" | tee -a "$LOG_FILE"
+    head -n 100 "$VERSION_SET_FILE" >> "$LOG_FILE" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to read version_set.cc" | tee -a "$LOG_FILE"
+    else
+        echo "----- End of version_set.cc -----" | tee -a "$LOG_FILE"
+    fi
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] File version_set.cc does not exist at path: $VERSION_SET_FILE" | tee -a "$LOG_FILE"
+fi
+
 # 返回原始目录
 cd "${SCRIPT_DIR}/../../"

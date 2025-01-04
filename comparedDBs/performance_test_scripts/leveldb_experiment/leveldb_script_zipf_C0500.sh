@@ -8,7 +8,7 @@ billion=1000000000
 percentages=(1 5 10 15 20 25 30) # 定义百分比值
 range_dividers=(1)
 DEVICE_NAME="sdd"
-F=10
+F=2
 level1base=500
 
 convert_to_billion_format() {
@@ -36,7 +36,7 @@ for i in {10..10}; do
         cd $dir1
         for value_size in 128; do
             num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
-            num_entries=20000000
+            num_entries=1000000000
             stats_interva=$((num_entries / 10))
 
             num_format=$(convert_to_billion_format $num_entries)
@@ -63,7 +63,7 @@ for i in {10..10}; do
                     echo "$num_format"
 
                     # 创建相应的目录
-                    db_dir="/mnt/db_test/LSM-tuning/level10B/C0_${level1base}/leveldb_f${F}_${zipf_a}_mem${buffer_size_mb}MiB_level1base_${level1base}"
+                    db_dir="/mnt/db_test/LSM-tuning/level10/C0_${level1base}/leveldb_f${F}_${zipf_a}_mem${buffer_size_mb}MiB_level1base_${level1base}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -78,7 +78,7 @@ for i in {10..10}; do
                     iostat -d 100 -x $DEVICE_NAME > leveldbf${F}_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_IOstats_factor${F}_level1base${level1base}MiB.log &
                     PID_IOSTAT=$!
                         
-                    cgexec -g memory:group16 ../../../leveldb/build_release_f_10_C0_500/db_bench \
+                    cgexec -g memory:group16 ../../../leveldb/build_release_f_10_C0_${level1base}/db_bench \
                         --db=$db_dir \
                         --num=$num_entries \
                         --value_size=$value_size \
