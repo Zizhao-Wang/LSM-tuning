@@ -5,7 +5,6 @@ sudo bash -c 'ulimit -n 800000'
 
 BASE_VALUE_SIZE=128
 billion=1000000000
-percentages=(1 5 10 15 20 25 30) # 定义百分比值
 range_dividers=(1)
 DEVICE_NAME="sdd"
 F=2
@@ -37,7 +36,7 @@ for i in {10..10}; do
         for value_size in 128; do
             num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
             num_entries=1000000000
-            stats_interva=$((num_entries / 100))
+            stats_interva=$((num_entries / 10))
 
             num_format=$(convert_to_billion_format $num_entries)
 
