@@ -45,7 +45,7 @@ for i in {10..10}; do
                 for buffer_size in 67108864; do
                     buffer_size_mb=$((buffer_size / 1048576))
 
-                    for F in 8 16 32; do
+                    for F in 16 32; do
 
                         log_file="leveldb_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_factor${F}_level1base${level1base}MiB.log"
                         data_file="/mnt/workloads/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径
