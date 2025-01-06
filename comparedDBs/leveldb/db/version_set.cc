@@ -52,7 +52,7 @@ static double MaxBytesForLevel(const Options* options, int level) {
   }
 
   while (level > 1) {
-    result *= 8;
+    result *= 16;
     level--;
   }
   return result;

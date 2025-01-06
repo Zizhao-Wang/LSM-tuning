@@ -8,7 +8,7 @@ billion=1000000000
 percentages=(1 5 10 15 20 25 30) # 定义百分比值
 range_dividers=(1)
 DEVICE_NAME="sdd"
-F=8
+F=16
 level1base=100
 
 convert_to_billion_format() {
