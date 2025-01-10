@@ -42,7 +42,7 @@ for i in {10..10}; do
             num_format=$(convert_to_billion_format $num_entries)
 
             for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  #  1.2 
-                for buffer_size in 67108864; do
+                for buffer_size in 8388608 33554432; do
 
                     buffer_size_mb=$((buffer_size / 1048576))
                             

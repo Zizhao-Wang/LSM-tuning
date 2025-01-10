@@ -7,7 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 定义构建目录的绝对路径
-BUILD_DIR="${SCRIPT_DIR}/../leveldb/build_release_f_10_C0_100"
+BUILD_DIR="${SCRIPT_DIR}/../leveldb/build_release_f_32_C0_100"
 
 # 检查并删除现有的构建目录
 if [ -d "$BUILD_DIR" ]; then
