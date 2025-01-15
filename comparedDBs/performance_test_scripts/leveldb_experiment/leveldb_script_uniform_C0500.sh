@@ -59,7 +59,7 @@ for i in {10..10}; do
                     echo "$num_format"
 
                     # 创建相应的目录
-                    db_dir="/mnt/db_test/LSM-tuning/level10/C0_${level1base}/leveldb_uniform_f${F}_mem${buffer_size_mb}MiB_level1base_${level1base}"
+                    db_dir="/mnt/db_test2/LSM-tuning/level10/C0_${level1base}/leveldb_uniform_f${F}_mem${buffer_size_mb}MiB_level1base_${level1base}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -96,7 +96,7 @@ for i in {10..10}; do
                         &> >( tee $log_file) &  
 
                         # 保存 db_bench 的 PID 供监控使用
-                        sleep 1
+                        sleep 2
 
                         DB_BENCH_PID=$(pgrep -af "db_bench --db=$db_dir" | grep -v 'sudo' | awk '{print $1}')
                         echo "Selected DB_BENCH_PID: $DB_BENCH_PID"

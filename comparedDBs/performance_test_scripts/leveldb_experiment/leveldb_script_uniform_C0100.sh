@@ -39,7 +39,7 @@ for i in {10..10}; do
             stats_interva=$((num_entries / 10))
 
             num_format=$(convert_to_billion_format $num_entries)
-            for buffer_size in 8388608 33554432; do
+            for buffer_size in 67108864; do
                 for F in 2 4 8 10 16 32; do
                     buffer_size_mb=$((buffer_size / 1048576))        
                     log_file="leveldb_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_unifrom_factor${F}_level1base${level1base}MiB.log"
