@@ -7,7 +7,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # 定义构建目录的绝对路径
-BUILD_DIR="${SCRIPT_DIR}/../leveldb/build_release_f_32_C0_100"
+BUILD_DIR="${SCRIPT_DIR}/../leveldb/build_release_f_10_C0_100"
 
 # 检查并删除现有的构建目录
 if [ -d "$BUILD_DIR" ]; then
@@ -82,6 +82,21 @@ if [ -f "$VERSION_SET_FILE" ]; then
 else
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] File version_set.cc does not exist at path: $VERSION_SET_FILE" | tee -a "$LOG_FILE"
 fi
+
+DB_FORMAT_FILE="${SCRIPT_DIR}/../leveldb/db/dbformat.h"
+if [ -f "$DB_FORMAT_FILE" ]; then
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] Appending first 40 lines of dbformat.h to LOG_FILE" | tee -a "$LOG_FILE"
+    echo "----- First 40 lines of dbformat.h -----" | tee -a "$LOG_FILE"
+    head -n 40 "$DB_FORMAT_FILE" >> "$LOG_FILE" 2>/dev/null
+    if [ $? -ne 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] Failed to read dbformat.h" | tee -a "$LOG_FILE"
+    else
+        echo "----- End of dbformat.h -----" | tee -a "$LOG_FILE"
+    fi
+else
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] File dbformat.h does not exist at path: $DB_FORMAT_FILE" | tee -a "$LOG_FILE"
+fi
+
 
 # 返回原始目录
 cd "${SCRIPT_DIR}/../../"
