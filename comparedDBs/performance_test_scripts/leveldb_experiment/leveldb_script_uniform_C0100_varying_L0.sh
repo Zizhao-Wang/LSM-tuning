@@ -9,9 +9,9 @@ percentages=(1 5 10 15 20 25 30) # 定义百分比值
 range_dividers=(1)
 DEVICE_NAME="sdd"
 level1base=100
-L0CT=16
-L0SDWT=32
-L0SWT=48
+L0CT=64
+L0SDWT=128
+L0SWT=192
 
 convert_to_billion_format() {
     local num=$1
