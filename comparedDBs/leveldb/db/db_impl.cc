@@ -38,6 +38,7 @@
 #include "util/coding.h"
 #include "util/logging.h"
 #include "util/mutexlock.h"
+#include "util/global_stats.h"
 
 namespace leveldb {
 
@@ -1606,21 +1607,37 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
   bool have_stat_update = false;
   Version::GetStats stats;
 
+  Get_Time_Stats local_stats; // Local instance to store stats for this Get call
+  int64_t start_time = env_->NowMicros();
   // Unlock while reading from files and memtables
   {
     mutex_.Unlock();
     // First look in the memtable, then in the immutable memtable (if any).
     LookupKey lkey(key, snapshot);
+    int64_t mem_start_time = env_->NowMicros();
     if (mem->Get(lkey, value, &s)) {
       // Done
-    } else if (imm != nullptr && imm->Get(lkey, value, &s)) {
-      // Done
-    } else {
-      s = current->Get(options, lkey, value, &stats);
-      have_stat_update = true;
+      local_stats.memtable_time = env_->NowMicros() - mem_start_time;
+    }else{
+      local_stats.memtable_time = env_->NowMicros() - mem_start_time;
+      int64_t imm_start_time = env_->NowMicros();
+      if (imm != nullptr && imm->Get(lkey, value, &s)) {
+        local_stats.immtable_time = env_->NowMicros() - imm_start_time;
+        // Done
+      } else {
+        local_stats.immtable_time = env_->NowMicros() - imm_start_time;
+        int64_t disk_start_time = env_->NowMicros();
+        s = current->Get(options, lkey, value, &stats);
+        have_stat_update = true;
+        local_stats.disk_time = env_->NowMicros() - disk_start_time;
+      }
     }
+    
     mutex_.Lock();
   }
+
+  local_stats.total_time = env_->NowMicros() - start_time;
+  get_time_stats.Add(local_stats);  // Accumulate stats in the class-level instance
 
   if (have_stat_update && current->UpdateStats(stats)) {
     MaybeScheduleCompaction();
@@ -1926,6 +1943,71 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
     snprintf(buf, sizeof(buf), "user_io:%.3fMB total_ios: %.3fMB WriteAmplification: %2.4f\n", user_io, total_io, total_io/ user_io);
     value->append(buf);
     return true;
+  } else if (in == "sstables") {
+    *value = versions_->current()->DebugString();
+    return true;
+  } else if (in == "approximate-memory-usage") {
+    size_t total_usage = options_.block_cache->TotalCharge();
+    if (mem_) {
+      total_usage += mem_->ApproximateMemoryUsage();
+    }
+    if (imm_) {
+      total_usage += imm_->ApproximateMemoryUsage();
+    }
+    char buf[50];
+    std::snprintf(buf, sizeof(buf), "%llu",
+                  static_cast<unsigned long long>(total_usage));
+    value->append(buf);
+    return true;
+  }
+
+  return false;
+}
+
+bool DBImpl::GetPropertywhileRead(const Slice& property, std::string* value) {
+  
+  value->clear();
+  MutexLock l(&mutex_);
+  Slice in = property;
+  Slice prefix("leveldb.");
+  if (!in.starts_with(prefix)) return false;
+  in.remove_prefix(prefix.size());
+
+  if (in.starts_with("num-files-at-level")) {
+    in.remove_prefix(strlen("num-files-at-level"));
+    uint64_t level;
+    bool ok = ConsumeDecimalNumber(&in, &level) && in.empty();
+    if (!ok || level >= config::kNumLevels) {
+      return false;
+    } else {
+      char buf[100];
+      std::snprintf(buf, sizeof(buf), "%d",
+                    versions_->NumLevelFiles(static_cast<int>(level)));
+      *value = buf;
+      return true;
+    }
+  } else if (in == "stats") {
+
+    //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
+    // I modified this part for print more details of a whole LSM
+    char buf[500];
+    std::snprintf(buf, sizeof(buf),
+      "Mem    | Imm    | L0Meta  | LiMeta  | table_cache_Load | Block_Array_Check  | Filter_Check   | Block_Load   | Total\n"
+      "-------------------------------------------------------------------------------------------------------------\n"
+      "%6.3f | %6.3f | %6.3f  | %6.3f  | %6.3f            | %6.3f              | %6.3f          | %6.3f       | %6.3f\n",
+      get_time_stats.memtable_time / 1000000.0, 
+      get_time_stats.immtable_time / 1000000.0,
+      versions_->search_stats.level0_search_time / 1000000.0,
+      versions_->search_stats.other_levels_search_time / 1000000.0,
+      table_cache_->table_cache_time_stats.table_cache_load / 1000000.0,
+      global_stats.index_block_seek_time.load(std::memory_order_relaxed) / 1000000.0,
+      global_stats.filter_check_time.load(std::memory_order_relaxed) / 1000000.0,
+      global_stats.block_load_seek_time.load(std::memory_order_relaxed) / 1000000.0,
+      get_time_stats.total_time / 1000000.0);
+
+    value->append(buf);
+    return true;
+    //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
   } else if (in == "sstables") {
     *value = versions_->current()->DebugString();
     return true;

@@ -47,6 +47,17 @@ class TableCache {
   // Evict any entry for the specified file number
   void Evict(uint64_t file_number);
 
+  struct TableAndBlockCacheStats {
+    int64_t table_cache_load;      // 时间用于查找缓存
+
+    TableAndBlockCacheStats() : table_cache_load(0){}
+
+    void Reset() {
+      table_cache_load = 0;
+    }
+  };
+  TableAndBlockCacheStats table_cache_time_stats;
+
  private:
   Status FindTable(uint64_t file_number, uint64_t file_size, Cache::Handle**);
 

@@ -287,32 +287,41 @@ static bool NewestFirst(FileMetaData* a, FileMetaData* b) {
 
 void Version::ForEachOverlapping(Slice user_key, Slice internal_key, void* arg,
                                  bool (*func)(void*, int, FileMetaData*)) {
+
+  int64_t start_time, end_time; 
   const Comparator* ucmp = vset_->icmp_.user_comparator();
 
   // Search level-0 in order from newest to oldest.
   // fprintf(stdout, "level 0 has %lu files!\n",files_[0].size());
   std::vector<FileMetaData*> tmp;
   tmp.reserve(files_[0].size());
+  start_time = vset_->env_->NowMicros(); // 开始查找 Level 0 的 metadata 时间
   for (uint32_t i = 0; i < files_[0].size(); i++) {
     FileMetaData* f = files_[0][i];
-    //  fprintf(stdout, "Checking file %u: smallest = %s, largest = %s\n",
-    //         i,f->smallest.user_key().ToString().c_str(),f->largest.user_key().ToString().c_str());
     if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
         ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
-        // fprintf(stdout, "File %u matches with user_key: %s\n Checking file %lu: smallest = %s, largest = %s\n",
-        //       i, user_key.ToString().c_str(),f->number,f->smallest.user_key().ToString().c_str(), f->largest.user_key().ToString().c_str() );
-      tmp.push_back(f);
+        tmp.push_back(f);
     }
   }
+
+  end_time = vset_->env_->NowMicros(); // 结束查找 Level 0 的 metadata 时间
+  vset_->search_stats.AddLevel0SearchTime(end_time - start_time);   
+
+  start_time = vset_->env_->NowMicros();
   if (!tmp.empty()) {
     std::sort(tmp.begin(), tmp.end(), NewestFirst);
     for (uint32_t i = 0; i < tmp.size(); i++) {
       if (!(*func)(arg, 0, tmp[i])) {
+        end_time = vset_->env_->NowMicros(); // 结束查找 Level 0 的文件检查时间
+        vset_->search_stats.AddLevel0FileCheckTime(end_time - start_time);
         return;
       }
     }
+    end_time = vset_->env_->NowMicros(); // 结束查找 Level 0 的文件检查时间
+    vset_->search_stats.AddLevel0FileCheckTime(end_time - start_time);
   }else{
-    // fprintf(stdout, "No File matches with user_key!\n");
+    end_time = vset_->env_->NowMicros();  // 结束查找Level 0 的所有时间
+    vset_->search_stats.level0_search_time += (end_time - start_time);  // 记录时间
   }
 
   // Search other levels.
@@ -321,27 +330,30 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key, void* arg,
     // fprintf(stdout, "level %d has %lu files!\n",level,num_files);
     if (num_files == 0) continue;
 
+    start_time = vset_->env_->NowMicros(); // 开始查找当前层级的 metadata 时间
     // Binary search to find earliest index whose largest key >= internal_key.
     uint32_t index = FindFile(vset_->icmp_, files_[level], internal_key);
-    for (int i=0; i< files_[level].size();i++){
-      FileMetaData* f = files_[level][i];
-      // fprintf(stdout, "Checking file %u: smallest = %s, largest = %s\n",
-      //       i,f->smallest.user_key().ToString().c_str(),f->largest.user_key().ToString().c_str());
-    }
+    end_time = vset_->env_->NowMicros(); // 结束查找当前层级的 metadata 时间
+    vset_->search_stats.AddOtherLevelsSearchTime(end_time - start_time); // 记录当前层级的 metadata 查找时间
      
+    start_time = vset_->env_->NowMicros(); // 开始查找当前层级的文件检查时间
     if (index < num_files) {
       FileMetaData* f = files_[level][index];
       if (ucmp->Compare(user_key, f->smallest.user_key()) < 0) {
         // All of "f" is past any data for user_key
       } else {
-        // fprintf(stdout, "File %u matches with user_key: %s\n Checking file %lu: smallest = %s, largest = %s\n",
-        //       index, user_key.ToString().c_str(),f->number,f->smallest.user_key().ToString().c_str(), f->largest.user_key().ToString().c_str() );
         if (!(*func)(arg, level, f)) {
+          end_time = vset_->env_->NowMicros(); // 结束查找当前层级的文件检查时间
+          vset_->search_stats.AddOtherLevelsFileCheckTime(end_time - start_time);
           return;
-        }
+        } 
       }
+      end_time = vset_->env_->NowMicros(); // 结束查找当前层级的文件检查时间
+      vset_->search_stats.AddOtherLevelsFileCheckTime(end_time - start_time);
     }
   }
+  // fprintf(stdout, "File %u matches with user_key: %s\n Checking file %lu: smallest = %s, largest = %s\n",
+        //       index, user_key.ToString().c_str(),f->number,f->smallest.user_key().ToString().c_str(), f->largest.user_key().ToString().c_str() );
 }
 
 Status Version::Get(const ReadOptions& options, const LookupKey& k,

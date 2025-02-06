@@ -275,6 +275,53 @@ class VersionSet {
 
   bool compute_hot_cold_range(const Slice& key, const std::pair<Slice, Slice>& hot_range, bool& is_hot);
 
+  struct MetadataSearchStats {
+    // Level 0
+    int64_t level0_search_time;        // Level 0 的 metadata 查找时间
+    int64_t level0_file_check_time;    // Level 0 的文件检查时间
+
+    // Other levels
+    int64_t other_levels_search_time;  // 其他层级的 metadata 查找时间
+    int64_t other_levels_file_check_time;  // 其他层级的文件检查时间
+
+    // 总查询时间
+    int64_t total_time;
+
+    // 构造函数初始化
+    MetadataSearchStats()
+        : level0_search_time(0),
+          level0_file_check_time(0),
+          other_levels_search_time(0),
+          other_levels_file_check_time(0),
+          total_time(0) {}
+
+    // 累加 Level 0 查找时间
+    void AddLevel0SearchTime(int64_t time) {
+        level0_search_time += time;
+    }
+
+    // 累加 Level 0 文件检查时间
+    void AddLevel0FileCheckTime(int64_t time) {
+        level0_file_check_time += time;
+    }
+
+    // 累加其他层级的查找时间
+    void AddOtherLevelsSearchTime(int64_t time) {
+        other_levels_search_time += time;
+    }
+
+    // 累加其他层级的文件检查时间
+    void AddOtherLevelsFileCheckTime(int64_t time) {
+        other_levels_file_check_time += time;
+    }
+
+    // 累加总时间
+    void AddTotalTime(int64_t time) {
+        total_time += time;
+    }
+  };
+  MetadataSearchStats search_stats;  // 用于记录metadata搜索时间的实例
+
   //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
 
  private:

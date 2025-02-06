@@ -101,13 +101,18 @@ Status TableCache::Get(const ReadOptions& options, uint64_t file_number,
                        uint64_t file_size, const Slice& k, void* arg,
                        void (*handle_result)(void*, const Slice&,
                                              const Slice&)) {
+  int64_t start_time, end_time;
+  start_time = env_->NowMicros();
   Cache::Handle* handle = nullptr;
   Status s = FindTable(file_number, file_size, &handle);
+  table_cache_time_stats.table_cache_load += (env_->NowMicros()-start_time);
+
   if (s.ok()) {
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
     s = t->InternalGet(options, k, arg, handle_result);
     cache_->Release(handle);
   }
+  
   return s;
 }
 

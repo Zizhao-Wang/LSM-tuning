@@ -1695,6 +1695,30 @@ util/filter_policy.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/filter_policy.cc.s
 .PHONY : util/filter_policy.cc.s
 
+util/global_stats.o: util/global_stats.cc.o
+.PHONY : util/global_stats.o
+
+# target to build an object file
+util/global_stats.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/global_stats.cc.o
+.PHONY : util/global_stats.cc.o
+
+util/global_stats.i: util/global_stats.cc.i
+.PHONY : util/global_stats.i
+
+# target to preprocess a source file
+util/global_stats.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/global_stats.cc.i
+.PHONY : util/global_stats.cc.i
+
+util/global_stats.s: util/global_stats.cc.s
+.PHONY : util/global_stats.s
+
+# target to generate assembly for a file
+util/global_stats.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/global_stats.cc.s
+.PHONY : util/global_stats.cc.s
+
 util/hash.o: util/hash.cc.o
 .PHONY : util/hash.o
 
@@ -2164,6 +2188,9 @@ help:
 	@echo "... util/filter_policy.o"
 	@echo "... util/filter_policy.i"
 	@echo "... util/filter_policy.s"
+	@echo "... util/global_stats.o"
+	@echo "... util/global_stats.i"
+	@echo "... util/global_stats.s"
 	@echo "... util/hash.o"
 	@echo "... util/hash.i"
 	@echo "... util/hash.s"
