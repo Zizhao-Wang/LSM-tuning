@@ -121,8 +121,19 @@ class DBImpl : public DB {
     int64_t bytes_written;
   };
 
+  struct ReadStats {
+    ReadStats() : time(0), readnumber(0){}
 
-    struct new_LeveldataStats {
+    void Add(const int64_t& c) {
+      this->time += c;
+      this->readnumber++;
+    }
+
+    int64_t time;
+    int64_t readnumber;
+  };
+
+  struct new_LeveldataStats {
     new_LeveldataStats()
     : micros(0), 
       bytes_read(0), 
@@ -367,6 +378,7 @@ class DBImpl : public DB {
   Status bg_error_ GUARDED_BY(mutex_);
 
   CompactionStats stats_[config::kNumLevels] GUARDED_BY(mutex_);
+  ReadStats read_stats_[config::kNumLevels] GUARDED_BY(mutex_);
   
   Get_Time_Stats get_time_stats GUARDED_BY(mutex_);
 

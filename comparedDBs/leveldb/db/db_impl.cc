@@ -1639,6 +1639,8 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key,
   local_stats.total_time = env_->NowMicros() - start_time;
   get_time_stats.Add(local_stats);  // Accumulate stats in the class-level instance
 
+  read_stats_[stats.seek_file_level].Add(local_stats.total_time);
+  
   if (have_stat_update && current->UpdateStats(stats)) {
     MaybeScheduleCompaction();
   }
@@ -1992,9 +1994,9 @@ bool DBImpl::GetPropertywhileRead(const Slice& property, std::string* value) {
     // I modified this part for print more details of a whole LSM
     char buf[500];
     std::snprintf(buf, sizeof(buf),
-      "Mem    | Imm    | L0Meta  | LiMeta  | table_cache_Load | Block_Array_Check  | Filter_Check   | Block_Load   | Total\n"
-      "-------------------------------------------------------------------------------------------------------------\n"
-      "%6.3f | %6.3f | %6.3f  | %6.3f  | %6.3f            | %6.3f              | %6.3f          | %6.3f       | %6.3f\n",
+    "Mem    | Imm    | L0Meta  | LiMeta  | table_cache_Load | Block_Array_Check  | Filter_Check   | Block_Load   | Total\n"
+    "-------------------------------------------------------------------------------------------------------------\n"
+    "%6.3f | %6.3f | %6.3f  | %6.3f  | %6.3f            | %6.3f              | %6.3f          | %6.3f       | %6.3f\n",
       get_time_stats.memtable_time / 1000000.0, 
       get_time_stats.immtable_time / 1000000.0,
       versions_->search_stats.level0_search_time / 1000000.0,

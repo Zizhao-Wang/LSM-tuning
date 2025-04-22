@@ -251,4 +251,5 @@ CMakeFiles/leveldb.dir/db/db_impl.cc.o: \
  /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./table/block.h \
  /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./table/merger.h \
  /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./table/two_level_iterator.h \
- /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./util/mutexlock.h
+ /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./util/mutexlock.h \
+ /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./util/global_stats.h
