@@ -38,7 +38,7 @@ for i in {10..10}; do
             num_entries=10000000000
 
             for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  # 
-                for ct0 in 2 4 8 16; do  # 
+                for ct0 in 32; do  # 
                     buffer_size=67108864
                     buffer_size_mb=$((buffer_size / 1048576))
                     log_file="RocksDB_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}.log"
@@ -56,7 +56,7 @@ for i in {10..10}; do
                     db_dir="/mntdisk/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     db_dir="/mnt/db_test/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     db_dir="/mnt/db_test2/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
-                    db_dir="/mnt/workloads/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
+                    # db_dir="/mnt/workloads/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -88,8 +88,8 @@ for i in {10..10}; do
                         --cache_size=8388608 \
                         --use_direct_io_for_flush_and_compaction=true \
                         --level0_file_num_compaction_trigger=$ct0 \
-                        --level0_slowdown_writes_trigger=20 \
-                        --level0_stop_writes_trigger=36 \
+                        --level0_slowdown_writes_trigger=40 \
+                        --level0_stop_writes_trigger=72 \
                         --max_bytes_for_level_base=268435456 \
                         --max_background_compactions=8 \
                         --max_background_flushes=1 \
