@@ -26,7 +26,7 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_Zipf_Write_Performance"
+    dir1="${i}B_Moose_Zipf_Write_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -38,12 +38,12 @@ for i in {10..10}; do
             num_entries=10000000000
 
             for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  # 
-                for ct0 in 2 4 8 16; do  # 
+                for ct0 in 4; do  # 
                     buffer_size=67108864
                     buffer_size_mb=$((buffer_size / 1048576))
-                    log_file="RocksDB_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}.log"
-                    data_file="/mnt/workloads/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径 
-                    memory_log_file="$(pwd)/RocksDB_${num_format}_key16_val${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
+                    log_file="Moose_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}.log"
+                    data_file="/mnt/nvm/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径 
+                    memory_log_file="$(pwd)/Moose_${num_format}_key16_val${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -68,7 +68,7 @@ for i in {10..10}; do
                     echo "stats_interval: $stats_interva"
                     echo "$num_format"
 
-                    iostat -d 100 -x $DEVICE_NAME > RocksDB_${num_format}_val_${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}_IOstats.log &
+                    iostat -d 100 -x $DEVICE_NAME > Moose_${num_format}_val_${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}_IOstats.log &
                     PID_IOSTAT=$!
                             
                     ../../../MooseLSM/release/db_bench \
@@ -81,10 +81,10 @@ for i in {10..10}; do
                         --bloom_bits=10 \
                         --cache_size=8388608 \
                         --use_direct_io_for_flush_and_compaction=true \
-                        --level0_file_num_compaction_trigger=$ct0 \
-                        --level0_slowdown_writes_trigger=20 \
-                        --level0_stop_writes_trigger=36 \
                         --max_background_compactions=8 \
+                        --level_capacities="536870912,5368709120,59055800320,649613803520,5196910428160" \
+                        --run_numbers="2,2,2,2" \
+                        --compaction_style=4 \
                         --max_background_flushes=1 \
                         --open_files=80000 \
                         --compression_ratio=0 \

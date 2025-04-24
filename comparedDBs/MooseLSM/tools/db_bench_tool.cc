@@ -28,6 +28,7 @@
 #endif
 #include <atomic>
 #include <cinttypes>
+#include <iomanip> 
 #include <condition_variable>
 #include <cstddef>
 #include <iostream>
@@ -311,6 +312,7 @@ DEFINE_int32(key_size_, 16, "size of each key");
 DEFINE_int32(value_size_, 128, "size of each value");
 
 
+DEFINE_string(mem_log_file,"", "mem usage path");
 
 DEFINE_int32(value_size_min, 100, "Min size of random value");
 
@@ -2146,6 +2148,7 @@ class Stats {
   uint64_t last_report_done_;
   uint64_t next_report_;
   uint64_t bytes_;
+  int call_ref;
   uint64_t last_op_finish_;
   uint64_t last_report_finish_;
   std::unordered_map<OperationType, std::shared_ptr<HistogramImpl>,
@@ -2172,6 +2175,7 @@ class Stats {
     last_report_done_ = 0;
     bytes_ = 0;
     seconds_ = 0;
+    call_ref = 0;
     start_ = clock_->NowMicros();
     sine_interval_ = clock_->NowMicros();
     finish_ = start_;
@@ -2253,6 +2257,65 @@ class Stats {
     // Set to now to avoid latency from calls to SleepForMicroseconds.
     last_op_finish_ = clock_->NowMicros();
   }
+
+  std::string getCurrentTime() {
+    char timeStr[100];
+    time_t now = time(NULL);
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    return std::string(timeStr);
+  } 
+
+  std::string format_memory(unsigned long bytes) {
+    const double GIGABYTE = 1024.0 * 1024.0 * 1024.0;
+    const double MEGABYTE = 1024.0 * 1024.0;
+    std::ostringstream oss;
+
+    if (bytes >= GIGABYTE) {
+        oss << std::fixed << std::setprecision(2) << (bytes / GIGABYTE) << " GB";
+    } else {
+        oss << std::fixed << std::setprecision(2) << (bytes / MEGABYTE) << " MB";
+    }
+
+    return oss.str();
+  }
+    
+  void print_mem_usage() {
+
+    std::ofstream log_file;
+    if (call_ref == 0) {
+      // 如果call_ref为0，清空文件并从头开始写
+      log_file.open(FLAGS_mem_log_file, std::ios::trunc);
+    } else {
+      // 如果call_ref不为0，以追加模式打开文件
+      log_file.open(FLAGS_mem_log_file, std::ios::app);
+    }
+
+    if (!log_file.is_open()) {
+      fprintf(stderr, "Failed to open the mem_log file: %s.\n",FLAGS_mem_log_file.c_str());  
+      return ;
+    }
+    
+    std::ifstream statm("/proc/self/statm");
+    if (!statm) {
+      fprintf(stderr, "Failed to open /proc/self/statm.\n");
+      return;
+    }
+    unsigned long size, resident, shr_size;
+    if (!(statm >> size >> resident >> shr_size)) {
+      fprintf(stderr, "Failed to read memory usage from /proc/self/statm.\n");
+      return;
+    }
+    long page_size = sysconf(_SC_PAGESIZE); // 页面大小，字节
+
+    // 使用ostream的插入操作符来写入信息
+    log_file << getCurrentTime() << " ... thread " << id_ << ": (" << (done_ - last_report_done_) << "," << done_ << ") ops have been finished!\n";
+    log_file << "virtual memory used: " << format_memory(size * page_size) << ", "
+             << "Resident set size: " << format_memory(resident * page_size) << ", "
+             << "Shared Memory Usage: " << format_memory(shr_size * page_size) << " \n\n";    
+    
+    call_ref++;
+  }
+
 
   void FinishedOps(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops,
                    enum OperationType op_type = kOthers) {
@@ -4180,6 +4243,7 @@ class Benchmark {
       }
       options.level_capacities = level_capacities;
       options.run_numbers = run_numbers;
+      fprintf(stderr,"Note Moose uses the kCompactionStyleMoose stye! \n");
     }
     options.compaction_pri = FLAGS_compaction_pri_e;
     options.allow_mmap_reads = FLAGS_mmap_read;

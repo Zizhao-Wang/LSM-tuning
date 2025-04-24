@@ -43,6 +43,7 @@ for i in {10..10}; do
                     buffer_size_mb=$((buffer_size / 1048576))
                     log_file="RocksDB_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}.log"
                     data_file="/mnt/workloads/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径 
+                    data_file="/mnt/nvm/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径
                     memory_log_file="$(pwd)/RocksDB_${num_format}_key16_val${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代
@@ -55,6 +56,7 @@ for i in {10..10}; do
                     db_dir="/mntdisk/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     db_dir="/mnt/db_test/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     db_dir="/mnt/db_test2/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
+                    db_dir="/mnt/workloads/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -86,8 +88,9 @@ for i in {10..10}; do
                         --cache_size=8388608 \
                         --use_direct_io_for_flush_and_compaction=true \
                         --level0_file_num_compaction_trigger=$ct0 \
-                        --level0_slowdown_writes_trigger=
-                        --level0_stop_writes_trigger=
+                        --level0_slowdown_writes_trigger=20 \
+                        --level0_stop_writes_trigger=36 \
+                        --max_bytes_for_level_base=268435456 \
                         --max_background_compactions=8 \
                         --max_background_flushes=1 \
                         --open_files=80000 \
