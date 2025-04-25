@@ -38,7 +38,7 @@ for i in {10..10}; do
             num_entries=10000000000
 
             for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  # 
-                for ct0 in 32; do  # 
+                for ct0 in 32 64; do  # 
                     buffer_size=67108864
                     buffer_size_mb=$((buffer_size / 1048576))
                     log_file="RocksDB_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}.log"

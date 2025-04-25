@@ -1,12 +1,15 @@
+
 echo fb0-=0-= | sudo -S bash -c 'echo 800000 > /proc/sys/fs/file-max'
-bash -c 'ulimit -n 800000'
+sudo bash -c 'ulimit -n 800000'
 
 
 BASE_VALUE_SIZE=128
 billion=1000000000
-
-DEVICE_NAME="nvme1n1"
-
+percentages=(1 5 10 15 20 25 30) # 定义百分比值
+range_dividers=(1)
+DEVICE_NAME="sdd"
+F=10
+level1base=5000
 
 convert_to_billion_format() {
     local num=$1
@@ -26,25 +29,26 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_Uniform_Write_Performance"
+    dir1="${i}B_SATune_tuning_experiments"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
         for value_size in 128; do
             num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
+            num_entries=1000000000
             stats_interva=$((num_entries / 100))
-            num_format=$(convert_to_billion_format $num_entries)
-            num_entries=10000000000
 
-            for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  # 
-                for ct0 in 32 64; do  # 
-                    buffer_size=67108864
+            num_format=$(convert_to_billion_format $num_entries)
+
+            for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  #  1.2 
+                for buffer_size in 67108864; do
+
                     buffer_size_mb=$((buffer_size / 1048576))
-                    log_file="RocksDB_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}.log"
-                    data_file="/mnt/workloads/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径 
-                    data_file="/mnt/nvm/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径
-                    memory_log_file="$(pwd)/RocksDB_${num_format}_key16_val${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
+                            
+                    log_file="SAtune_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_factor${F}_level1base${level1base}MiB.log"
+                    data_file="/mnt/workloads/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径
+                    memory_log_file="$(pwd)/Satune_zipf${zipf_a}_f${F}_memory_usage_${num_format}_key16_val${value_size}_mem${buffer_size_mb}MiB_factor${F}_level1base${level1base}MiB.log"  
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -52,11 +56,14 @@ for i in {10..10}; do
                         continue
                     fi
 
+                    echo "base_num: $base_num"
+                    echo "num_entries: $num_entries"
+                    echo "value_size:$value_size"
+                    echo "stats_interval: $stats_interva"
+                    echo "$num_format"
+
                     # 创建相应的目录
-                    db_dir="/mntdisk/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
-                    # db_dir="/mnt/db_test/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
-                    # db_dir="/mnt/db_test2/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
-                    # db_dir="/mnt/workloads/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
+                    db_dir="/mnt/db_test/SAtune10B/leveldb_f${F}_${zipf_a}_mem${buffer_size_mb}MiB_level1base_${level1base}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -66,42 +73,30 @@ for i in {10..10}; do
                         rm -rf "${db_dir:?}/"*
                     fi
 
+                    echo fb0-=0-= | sudo -S bash -c 'echo 1 > /proc/sys/vm/drop_caches'
 
-
-                    echo "base_num: $base_num"
-                    echo "num_entries: $num_entries"
-                    echo "value_size:$value_size"
-                    echo "stats_interval: $stats_interva"
-                    echo "$num_format"
-
-                    iostat -d 100 -x $DEVICE_NAME > RocksDB_${num_format}_val_${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}_IOstats.log &
+                    iostat -d 100 -x $DEVICE_NAME > leveldbf${F}_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_IOstats_factor${F}_level1base${level1base}MiB.log &
                     PID_IOSTAT=$!
-                            
-                        ../../../rocksdb/release/db_bench \
+                        
+                    cgexec -g memory:group16 ../SATune/release/db_bench \
                         --db=$db_dir \
                         --num=$num_entries \
-                        --value_size_=$value_size \
-                        --batch_size=1 \
+                        --value_size=$value_size \
+                        --batch_size=1000 \
                         --benchmarks=fillzipf,stats \
-                        --data_file_path=$data_file  \
+                        --data_file=$data_file  \
+                        --logpath=/mnt/logs \
                         --bloom_bits=10 \
+                        --log=1  \
                         --cache_size=8388608 \
-                        --use_direct_io_for_flush_and_compaction=true \
-                        --level0_file_num_compaction_trigger=$ct0 \
-                        --level0_slowdown_writes_trigger=40 \
-                        --level0_stop_writes_trigger=72 \
-                        --max_bytes_for_level_base=268435456 \
-                        --max_background_compactions=8 \
-                        --max_background_flushes=1 \
-                        --open_files=80000 \
-                        --compression_ratio=0 \
+                        --mem_log_file=$memory_log_file \
+                        --open_files=40000 \
+                        --compression=0 \
                         --stats_interval=$stats_interva \
-                        --stats_per_interval=$stats_interva \
                         --histogram=1 \
                         --write_buffer_size=$buffer_size \
-                        --mem_log_file=$memory_log_file \
-                        --target_file_size_base=$buffer_size   \
-                        --compression_type=none \
+                        --max_file_size=$buffer_size   \
+                        --print_wa=true \
                         &> >( tee $log_file) &  
 
                         # 保存 db_bench 的 PID 供监控使用
@@ -110,7 +105,7 @@ for i in {10..10}; do
                         DB_BENCH_PID=$(pgrep -af "db_bench --db=$db_dir" | grep -v 'sudo' | awk '{print $1}')
                         echo "Selected DB_BENCH_PID: $DB_BENCH_PID"
 
-                        perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_stat_${num_format}_val_${value_size}_zipf${zipf_a}_mem${MEM}MiB_CT0${ct0}.txt" &
+                        perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_stat_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_factor${F}_level1base${level1base}MiB.txt" &
                         PERF_PID=$!
 
                         wait $DB_BENCH_PID
@@ -129,11 +124,10 @@ for i in {10..10}; do
                         else
                             echo "iostat process $PID_IOSTAT is no longer running."
                         fi
-                    done
+
                 done
+            done
         done
 done
-
-
 
 
