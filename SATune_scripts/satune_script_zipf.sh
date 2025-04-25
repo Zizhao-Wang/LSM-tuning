@@ -78,7 +78,7 @@ for i in {10..10}; do
                     iostat -d 100 -x $DEVICE_NAME > leveldbf${F}_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_IOstats_factor${F}_level1base${level1base}MiB.log &
                     PID_IOSTAT=$!
                         
-                    cgexec -g memory:group16 ../SATune/release/db_bench \
+                    cgexec -g memory:group16 ../../SATune/release/db_bench \
                         --db=$db_dir \
                         --num=$num_entries \
                         --value_size=$value_size \
