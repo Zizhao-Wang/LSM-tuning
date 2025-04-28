@@ -35,13 +35,20 @@ for i in {10..10}; do
             num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
             stats_interva=$((num_entries / 100))
             num_format=$(convert_to_billion_format $num_entries)
-            num_entries=10000000000
+            num_entries=1000000000
 
             for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  # 
-                for ct0 in 32 64; do  # 
+                for ct0 in  64; do  # 
+                for mb in 512; do
                     buffer_size=67108864
+                    buffer_size=2097152
+                    target_file_base=67108864
+
+                    level1_max_bytes=$(($mb * 1048576))
                     buffer_size_mb=$((buffer_size / 1048576))
-                    log_file="RocksDB_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}.log"
+                    target_file_base_mb=$((target_file_base / 1048576))
+
+                    log_file="RocksDB_${num_format}_val${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}.log"
                     data_file="/mnt/workloads/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径 
                     data_file="/mnt/nvm/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径
                     memory_log_file="$(pwd)/RocksDB_${num_format}_key16_val${value_size}_zipf${zipf_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
@@ -53,7 +60,7 @@ for i in {10..10}; do
                     fi
 
                     # 创建相应的目录
-                    db_dir="/mntdisk/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
+                    db_dir="/mntdisk/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}"
                     # db_dir="/mnt/db_test/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     # db_dir="/mnt/db_test2/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
                     # db_dir="/mnt/workloads/rocks10B/mem${buffer_size_mb}MB_zipf${zipf_a}_CT${ct0}"
@@ -79,6 +86,7 @@ for i in {10..10}; do
                             
                         ../../../rocksdb/release/db_bench \
                         --db=$db_dir \
+                        --max_bytes_for_level_base=$level1_max_bytes \
                         --num=$num_entries \
                         --value_size_=$value_size \
                         --batch_size=1 \
@@ -88,9 +96,8 @@ for i in {10..10}; do
                         --cache_size=8388608 \
                         --use_direct_io_for_flush_and_compaction=true \
                         --level0_file_num_compaction_trigger=$ct0 \
-                        --level0_slowdown_writes_trigger=40 \
-                        --level0_stop_writes_trigger=72 \
-                        --max_bytes_for_level_base=268435456 \
+                        --level0_slowdown_writes_trigger=80 \
+                        --level0_stop_writes_trigger=144 \
                         --max_background_compactions=8 \
                         --max_background_flushes=1 \
                         --open_files=80000 \
@@ -100,7 +107,7 @@ for i in {10..10}; do
                         --histogram=1 \
                         --write_buffer_size=$buffer_size \
                         --mem_log_file=$memory_log_file \
-                        --target_file_size_base=$buffer_size   \
+                        --target_file_size_base=$target_file_base   \
                         --compression_type=none \
                         &> >( tee $log_file) &  
 
@@ -129,6 +136,7 @@ for i in {10..10}; do
                         else
                             echo "iostat process $PID_IOSTAT is no longer running."
                         fi
+                    done
                     done
                 done
         done
