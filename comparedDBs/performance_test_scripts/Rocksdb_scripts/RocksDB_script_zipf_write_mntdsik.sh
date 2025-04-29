@@ -38,12 +38,12 @@ for i in {10..10}; do
             num_entries=1000000000
 
             for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  # 
-                for ct0 in  64; do  # 
-                for mb in 512; do
-                    buffer_size=67108864
-                    buffer_size=2097152
+                for ct0 in 8 16 32 64; do  # 
+                for mb in 100 300 512; do
+                for buffer_size in 2097152 8388608 33554432; do
+                    # buffer_size=67108864
+                    # buffer_size=2097152
                     target_file_base=67108864
-
                     level1_max_bytes=$(($mb * 1048576))
                     buffer_size_mb=$((buffer_size / 1048576))
                     target_file_base_mb=$((target_file_base / 1048576))
@@ -136,6 +136,8 @@ for i in {10..10}; do
                         else
                             echo "iostat process $PID_IOSTAT is no longer running."
                         fi
+
+                    done
                     done
                     done
                 done
