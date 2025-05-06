@@ -47,7 +47,7 @@ for file in "${files[@]}"; do
     if [ -f "$SOURCE_FILE" ]; then
         echo "开始传输文件 $file..."
 
-        # 使用 rsync 传输文件
+        # 使用 rsync 传输文件，已经配置了 SSH 密钥认证，无需输入密码
         rsync -avz --remove-source-files --progress "$SOURCE_FILE" "$TARGET_FILE"
 
         # 检查 rsync 是否成功

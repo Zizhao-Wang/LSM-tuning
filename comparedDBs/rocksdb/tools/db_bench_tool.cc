@@ -3623,6 +3623,9 @@ class Benchmark {
       } else if (name == "fillzipf") {
         fresh_db = true;
         method = &Benchmark::WriteZipf;
+      } else if (name == "fillcluster") {
+        fresh_db = true;
+        method = &Benchmark::WriteCluster;
       } else if (name == Slice("ycsba")) {
         method = &Benchmark::YCSB_A;
       } else if (name == Slice("ycsbb")) {
@@ -5137,6 +5140,8 @@ class Benchmark {
 
   void WriteZipf(ThreadState* thread) { DoWrite_zipf(thread, RANDOM); }
 
+  void WriteCluster(ThreadState* thread) { DoWrite_cluster(thread, RANDOM); }
+
   void WriteUniqueRandom(ThreadState* thread) {
     DoWrite(thread, UNIQUE_RANDOM);
   }
@@ -5293,6 +5298,103 @@ class Benchmark {
     fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
     thread->stats.AddBytes(bytes);
   }
+
+  void DoWrite_cluster(ThreadState* thread, WriteMode write_mode) {
+    uint64_t num_written = 0;
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      snprintf(msg, sizeof(msg), "(%" PRIu64 " ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch(/*reserved_bytes=*/0, /*max_bytes=*/0,
+                      FLAGS_write_batch_protection_bytes_per_key,
+                      user_timestamp_size_);
+    Status s;
+    int64_t bytes = 0;
+    int id = 0;
+
+      // 打开 CSV 文件
+    std::ifstream csv_file(FLAGS_data_file_path);
+    std::string line;
+    if (!csv_file.is_open()) {
+      fprintf(stderr, "Unable to open file: %s\n", FLAGS_data_file_path.c_str());
+      return;
+    }
+    std::getline(csv_file, line); // 读取并丢弃 CSV 文件的标题行
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    fprintf(stderr, "num_: %ld entries_per_batch_:%ld\n The key size:%d value size:%d \n"
+      , num_, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
+
+    const int32_t k_size=FLAGS_key_size;
+    const int32_t v_size=FLAGS_value_size_;
+    fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+
+    for (int64_t i = 0; i < num_; i += entries_per_batch_) {
+      batch.Clear();
+      int64_t batch_bytes = 0;
+
+      for (int64_t j = 0; j < entries_per_batch_; j++) {
+        int64_t rand_num = 0;
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+
+        if (!std::getline(csv_file, line)) { 
+          fprintf(stderr, "Error reading key from file\n");
+          return;
+        }
+
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+
+        if (row_data.size() != 7) {
+          fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
+          continue;
+        }
+
+        if(i<=10){
+          fprintf(stdout,"the row_data[5] is:%s\n",row_data[5].c_str());
+        }
+
+        char format[20];
+        char key[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(format, sizeof(format), "%%0%dllu", k_size);
+        std::snprintf(key, sizeof(key), format, (unsigned long long)k);
+        Slice val = gen.Generate(v_size);
+
+        // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
+        batch.Put(key, val);
+          
+        batch_bytes += val.size() + k_size + user_timestamp_size_;
+        bytes += val.size() + k_size + user_timestamp_size_;
+        ++num_written;
+        thread->stats.FinishedOps(nullptr, db_.db, entries_per_batch_, kWrite);
+      }
+
+      s = db_.db->Write(write_options_, &batch);
+
+      if (!s.ok()) {
+        fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
+        ErrorExit();
+      } 
+      // else {
+      //   fprintf(stderr, "Batch write successful. Bytes written: %ld\n", batch_bytes); // 输出批处理成功信息
+      // }
+    }
+
+    fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
+    thread->stats.AddBytes(bytes);
+  }
+
 
   void ReadRandom(ThreadState* thread) {
     int64_t read = 0;
