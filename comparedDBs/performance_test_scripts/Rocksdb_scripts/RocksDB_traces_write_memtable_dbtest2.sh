@@ -72,8 +72,8 @@ for i in {10..10}; do
             num_format=$(convert_to_billion_format $num_entries)
             num_entries=1000000000
 
-            for cluster_a in 1 13 25 30 35 51; do  # 
-                for ct0 in 4 ; do  # 
+            for cluster_a in 1 25 30 35 51 13 ; do  # 
+                for ct0 in 4; do  # 
                 for mb in 512; do
                 for buffer_size in 2097152 8388608 33554432 134217728 268435456; do
                     # buffer_size=67108864
