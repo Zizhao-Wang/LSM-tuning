@@ -250,6 +250,8 @@ DEFINE_string(
 
 DEFINE_int64(num, 1000000, "Number of key/values to place in database");
 
+DEFINE_int64(workload_num, 1000000, "Number of key/values to place in database");
+
 DEFINE_int64(numdistinct, 1000,
              "Number of distinct keys to use. Used in RandomWithVerify to "
              "read/write on fewer keys so that gets are more likely to find the"
@@ -2375,6 +2377,7 @@ class Stats {
     call_ref++;
   }
 
+
   void FinishedOps(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops,
                    enum OperationType op_type = kOthers) {
     if (reporter_agent_) {
@@ -3626,6 +3629,8 @@ class Benchmark {
       } else if (name == "fillcluster") {
         fresh_db = true;
         method = &Benchmark::WriteCluster;
+      } else if (name == "clusterQuery") {
+        method = &Benchmark::Cluster_benchmarking;
       } else if (name == Slice("ycsba")) {
         method = &Benchmark::YCSB_A;
       } else if (name == Slice("ycsbb")) {
@@ -5140,7 +5145,13 @@ class Benchmark {
 
   void WriteZipf(ThreadState* thread) { DoWrite_zipf(thread, RANDOM); }
 
-  void WriteCluster(ThreadState* thread) { DoWrite_cluster(thread, RANDOM); }
+  void WriteCluster(ThreadState* thread) { 
+    DoWrite_cluster(thread, RANDOM); 
+  }
+
+  void Cluster_benchmarking(ThreadState* thread) { 
+    Do_cluster_benchmarking(thread, RANDOM); 
+  }
 
   void WriteUniqueRandom(ThreadState* thread) {
     DoWrite(thread, UNIQUE_RANDOM);
@@ -5301,6 +5312,7 @@ class Benchmark {
 
   void DoWrite_cluster(ThreadState* thread, WriteMode write_mode) {
     uint64_t num_written = 0;
+    std::string get_value;
 
     if (num_ != FLAGS_num) {
       char msg[100];
@@ -5395,6 +5407,112 @@ class Benchmark {
     thread->stats.AddBytes(bytes);
   }
 
+  void Do_cluster_benchmarking(ThreadState* thread, WriteMode write_mode) {
+    uint64_t num_written = 0;
+    std::string get_value;
+    uint64_t found;
+    ReadOptions roptions;
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      snprintf(msg, sizeof(msg), "(%" PRIu64 " ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch(/*reserved_bytes=*/0, /*max_bytes=*/0,
+                      FLAGS_write_batch_protection_bytes_per_key,
+                      user_timestamp_size_);
+    Status s;
+    int64_t bytes = 0;
+    int id = 0;
+
+    // 打开 CSV 文件
+    std::ifstream csv_file(FLAGS_data_file_path);
+    std::string line;
+    if (!csv_file.is_open()) {
+      fprintf(stderr, "Unable to open file: %s in Do_cluster_benchmarking\n", FLAGS_data_file_path.c_str());
+      return;
+    }
+    std::getline(csv_file, line); // 读取并丢弃 CSV 文件的标题行
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    fprintf(stderr, "workload_num: %ld entries_per_batch_:%ld\n The key size:%d value size:%d \n", 
+      FLAGS_workload_num, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
+
+    const int32_t k_size=FLAGS_key_size;
+    const int32_t v_size=FLAGS_value_size_;
+    fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+
+    for (int64_t i = 0; i < FLAGS_workload_num; i += 1) {
+      batch.Clear();
+      int64_t batch_bytes = 0;
+
+      int64_t rand_num = 0;
+      line_stream.clear();
+      line_stream.str("");
+      row_data.clear();
+
+      if (!std::getline(csv_file, line)) { 
+        fprintf(stderr, "Error reading key from file\n");
+        return;
+      }
+
+      line_stream << line;
+      while (getline(line_stream, cell, ',')) {
+        row_data.push_back(cell);
+      }
+
+      if (row_data.size() != 7) {
+        fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
+        continue;
+      }
+
+      if(i<=10){
+        fprintf(stdout,"the row_data[5] is:%s\n",row_data[5].c_str());
+      }
+
+      if (row_data[5]=="get"){
+        char format[20];
+        char key1[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(format, sizeof(format), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), format, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+        auto sta = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        if (sta.ok()) {
+          found++;
+        }
+        bytes = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytes);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
+      }else if(row_data[5]=="add"){
+        char format[20];
+        char key2[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(format, sizeof(format), "%%0%dllu", k_size);
+        std::snprintf(key2, sizeof(key2), format, (unsigned long long)k);
+        Slice val = gen.Generate(FLAGS_value_size_);
+        // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
+        batch.Put(key2, val);
+        batch_bytes += val.size() + key_size_ + user_timestamp_size_;
+        bytes += val.size() + key_size_ + user_timestamp_size_;
+        s = db_.db->Write(write_options_, &batch);
+        thread->stats.AddBytes(bytes);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
+        if (!s.ok()) {
+          fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
+          ErrorExit();
+        } 
+      }else{}
+    }
+    thread->stats.print_mem_usage();
+    fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
+    thread->stats.AddBytes(bytes);
+  }
 
   void ReadRandom(ThreadState* thread) {
     int64_t read = 0;
@@ -5465,6 +5583,8 @@ class Benchmark {
     thread->stats.AddMessage(msg);
 
   }
+
+
 
   void YCSB_A(ThreadState* thread) {
     fprintf(stderr,"Enter YCSB_A\n");
