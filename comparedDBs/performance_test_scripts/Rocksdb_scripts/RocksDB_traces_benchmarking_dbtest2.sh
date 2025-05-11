@@ -122,8 +122,6 @@ for i in {10..10}; do
                         echo "stats_interval: $stats_interva"
                         echo "$num_format2"
 
-                        iostat -d 100 -x $DEVICE_NAME > RocksDB_PreLoad_${num_format2}in${num_format3}_val_${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}IOstats.log &
-                        PID_IOSTAT=$!
                                 
                         ../../../rocksdb/release/db_bench \
                             --db=$db_dir \
@@ -170,19 +168,26 @@ for i in {10..10}; do
 
                             wait $DB_BENCH_PID
 
-                            # 结束 iostat 进程
-                            echo "Checking if iostat process with PID $PID_IOSTAT is still running..."
-                            ps -p $PID_IOSTAT
+                            echo "Checking if perf stat process with PID $PERF_PID is still running..."
+                            ps -p $PERF_PID > /dev/null # 重定向标准输出到 /dev/null，只检查退出状态
                             if [ $? -eq 0 ]; then
-                                echo "iostat process $PID_IOSTAT is still running, killing now..."
-                                kill -9 $PID_IOSTAT
+                                echo "perf stat process $PERF_PID is still running, killing now..."
+                                kill -INT $PERF_PID # 尝试发送 SIGINT 信号，让 perf stat 优雅结束
+                                sleep 1 # 给 perf stat 1秒时间来处理信号和输出报告
+                                ps -p $PERF_PID > /dev/null
                                 if [ $? -eq 0 ]; then
-                                    echo "iostat process $PID_IOSTAT has been successfully killed."
+                                    echo "perf stat process $PERF_PID did not terminate, forcing kill..."
+                                    kill -9 $PERF_PID # 如果仍未结束，强制杀死
+                                    if [ $? -eq 0 ]; then
+                                        echo "perf stat process $PERF_PID has been successfully killed."
+                                    else
+                                        echo "Failed to force kill perf stat process $PERF_PID."
+                                    fi
                                 else
-                                    echo "Failed to kill iostat process $PID_IOSTAT."
+                                    echo "perf stat process $PERF_PID has been successfully terminated."
                                 fi
                             else
-                                echo "iostat process $PID_IOSTAT is no longer running."
+                                echo "perf stat process $PERF_PID is no longer running (it might have ended with db_bench)."
                             fi
                     done
                     done

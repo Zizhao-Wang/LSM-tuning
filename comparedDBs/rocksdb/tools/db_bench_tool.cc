@@ -2377,6 +2377,30 @@ class Stats {
     call_ref++;
   }
 
+  void printf_mem(DB* db){
+    std::string block_cache_usage_str;
+    if (db->GetProperty("rocksdb.block-cache-usage", &block_cache_usage_str)) {
+      fprintf(stderr, "rocksdb.block-cache-usage COUNT : %s\n", block_cache_usage_str.c_str());
+    } else {
+      fprintf(stderr, "Failed to get rocksdb.block-cache-usage\n");
+    }
+
+    std::string block_cache_pinned_usage_str;
+    if (db->GetProperty("rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage_str)) {
+      fprintf(stderr, "rocksdb.block-cache-pinned-usage COUNT : %s\n", block_cache_pinned_usage_str.c_str());
+    } else {
+      fprintf(stderr, "Failed to get rocksdb.block-cache-pinned-usage\n");
+    }
+
+    // --- 获取 TableReader 内存使用量估值 ---
+    std::string estimate_table_readers_mem_str;
+    if (db->GetProperty("rocksdb.estimate-table-readers-mem", &estimate_table_readers_mem_str)) {
+      fprintf(stderr, "rocksdb.estimate-table-readers-mem COUNT : %s\n", estimate_table_readers_mem_str.c_str());
+    } else {
+      fprintf(stderr, "Failed to get rocksdb.estimate-table-readers-mem\n");
+    }
+  }
+
 
   void FinishedOps(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops,
                    enum OperationType op_type = kOthers) {
@@ -2443,6 +2467,29 @@ class Stats {
                   (now - last_report_finish_) / 1000000.0,
                   (now - start_) / 1000000.0);
           print_mem_usage();
+
+          std::string block_cache_usage_str;
+          if (db->GetProperty("rocksdb.block-cache-usage", &block_cache_usage_str)) {
+            fprintf(stderr, "rocksdb.block-cache-usage COUNT : %s\n", block_cache_usage_str.c_str());
+          } else {
+            fprintf(stderr, "Failed to get rocksdb.block-cache-usage\n");
+          }
+
+          std::string block_cache_pinned_usage_str;
+          if (db->GetProperty("rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage_str)) {
+            fprintf(stderr, "rocksdb.block-cache-pinned-usage COUNT : %s\n", block_cache_pinned_usage_str.c_str());
+          } else {
+            fprintf(stderr, "Failed to get rocksdb.block-cache-pinned-usage\n");
+          }
+
+          // --- 获取 TableReader 内存使用量估值 ---
+          std::string estimate_table_readers_mem_str;
+          if (db->GetProperty("rocksdb.estimate-table-readers-mem", &estimate_table_readers_mem_str)) {
+            fprintf(stderr, "rocksdb.estimate-table-readers-mem COUNT : %s\n", estimate_table_readers_mem_str.c_str());
+          } else {
+            fprintf(stderr, "Failed to get rocksdb.estimate-table-readers-mem\n");
+          }
+
           if (id_ == 0 && FLAGS_stats_per_interval) {
             std::string stats;
 
@@ -5510,6 +5557,7 @@ class Benchmark {
       }else{}
     }
     thread->stats.print_mem_usage();
+    thread->stats.printf_mem(db_.db);
     fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
     thread->stats.AddBytes(bytes);
   }
