@@ -61,7 +61,7 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_Twitter_Benchmarking"
+    dir1="${i}B_RocksDB_TwitterCluster30_Benchmarking"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -71,7 +71,7 @@ for i in {10..10}; do
             stats_interva=$((num_entries / 100))
             num_entries=1000000000
 
-            for cluster_a in 1 ; do  # 
+            for cluster_a in 30 ; do  # 
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
@@ -81,8 +81,8 @@ for i in {10..10}; do
                     num_format2=$(convert_to_billion_format "$workload_kvs")
                     echo "原始值: $workload_kvs, 转换后: $num_format2"
                     for blk_size in 1 2 4 6 8 10 12 16 32; do
-                    for blk_cache_size in 8 32 64 128 512 1024; do
-                    for table_cache_size in 100 300 600 1000 2000 5000 10000; do
+                    for blk_cache_size in 32 128 512 1024; do
+                    for table_cache_size in 300 1000 5000 10000; do
                         # buffer_size=67108864
                         # buffer_size=2097152
                         target_file_base=67108864
@@ -95,7 +95,7 @@ for i in {10..10}; do
                         value_size_twitter=${cluster_value_size_map[$cluster_a]}
                         key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                        log_file="RocksDB_${num_format2}in${num_format3}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Blk${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
+                        log_file="RocksDB_${num_format2}_in${num_format3}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Blk${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
                         data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
                         memory_log_file="$(pwd)/RocksDB_BenchMarking_${num_format2}in${num_format3}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
