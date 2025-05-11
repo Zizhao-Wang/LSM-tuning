@@ -71,7 +71,7 @@ for i in {10..10}; do
             stats_interva=$((num_entries / 100))
             num_entries=1000000000
 
-            for cluster_a in 1 25 30 35 51 ; do  # 
+            for cluster_a in 1 ; do  # 
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
@@ -95,9 +95,9 @@ for i in {10..10}; do
                         value_size_twitter=${cluster_value_size_map[$cluster_a]}
                         key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                        log_file="RocksDB_${num_format2}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Blk${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
+                        log_file="RocksDB_${num_format2}in${num_format3}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Blk${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
                         data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                        memory_log_file="$(pwd)/RocksDB_PreLoad_${num_format2}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
+                        memory_log_file="$(pwd)/RocksDB_BenchMarking_${num_format2}in${num_format3}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                         # 如果日志文件存在，则跳过当前迭代
                         if [ -f "$log_file" ]; then
@@ -122,13 +122,13 @@ for i in {10..10}; do
                         echo "stats_interval: $stats_interva"
                         echo "$num_format2"
 
-                        iostat -d 100 -x $DEVICE_NAME > RocksDB_PreLoad_${num_format2}_val_${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}IOstats.log &
+                        iostat -d 100 -x $DEVICE_NAME > RocksDB_PreLoad_${num_format2}in${num_format3}_val_${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}IOstats.log &
                         PID_IOSTAT=$!
                                 
                         ../../../rocksdb/release/db_bench \
                             --db=$db_dir \
                             --max_bytes_for_level_base=$level1_max_bytes \
-                            --num=$num_kvs \
+                            --num=$num_kvs2 \
                             --workload_num=$workload_kvs \
                             --block_size=$block_size_write2  \
                             --perf_level=5   \
@@ -165,7 +165,7 @@ for i in {10..10}; do
                             DB_BENCH_PID=$(pgrep -af "db_bench --db=$db_dir" | grep -v 'sudo' | awk '{print $1}')
                             echo "Selected DB_BENCH_PID: $DB_BENCH_PID"
 
-                            perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format2}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.txt" &
+                            perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format2}in${num_format3}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.txt" &
                             PERF_PID=$!
 
                             wait $DB_BENCH_PID
