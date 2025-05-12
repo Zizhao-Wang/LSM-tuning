@@ -61,7 +61,7 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_TwitterCluster1_Benchmarking"
+    dir1="${i}B_RocksDB_TwitterCluster25_Benchmarking"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -71,7 +71,7 @@ for i in {10..10}; do
             stats_interva=$((num_entries / 100))
             num_entries=1000000000
 
-            for cluster_a in 25 ; do  # 
+            for cluster_a in 25; do  # 
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
