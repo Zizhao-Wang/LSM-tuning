@@ -80,7 +80,7 @@ for i in {10..10}; do
                     for workload_kvs in 100000000; do #200000000 300000000 400000000 500000000
                     num_format2=$(convert_to_billion_format "$workload_kvs")
                     echo "原始值: $workload_kvs, 转换后: $num_format2"
-                    for blk_size in 1 2 4 6 8 10 12 16 32; do
+                    for blk_size in 1 4 8 10 12 16 32; do
                     for blk_cache_size in 32 128 512 1024; do
                     for table_cache_size in 300 1000 5000 10000; do
                         # buffer_size=67108864
