@@ -5521,40 +5521,69 @@ class Benchmark {
         fprintf(stdout,"the row_data[5] is:%s\n",row_data[5].c_str());
       }
 
-      if (row_data[5]=="get"){
-        char format[20];
+      if (row_data[5]=="get"||row_data[5]=="gets"){
+        char formatget[20];
         char key1[100];
         const uint64_t k = std::stoull(row_data[1]);
-        std::snprintf(format, sizeof(format), "%%0%dllu", k_size);
-        std::snprintf(key1, sizeof(key1), format, (unsigned long long)k);
+        std::snprintf(formatget, sizeof(formatget), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatget, (unsigned long long)k);
         Slice readkey(key1);
         std::string* ts_ptr = nullptr;
-        auto sta = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
-        if (sta.ok()) {
+        auto sta1 = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        if (sta1.ok()) {
           found++;
         }
-        bytes = (16 + FLAGS_value_size);
-        thread->stats.AddBytes(bytes);
+        bytesget = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesget);
         thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
-      }else if(row_data[5]=="add"){
-        char format[20];
+      }else if(row_data[5]=="add"||row_data[5]=="set"){
+        char formatadd[20];
         char key2[100];
         const uint64_t k = std::stoull(row_data[1]);
-        std::snprintf(format, sizeof(format), "%%0%dllu", k_size);
-        std::snprintf(key2, sizeof(key2), format, (unsigned long long)k);
+        std::snprintf(formatadd, sizeof(formatadd), "%%0%dllu", k_size);
+        std::snprintf(key2, sizeof(key2), formatadd, (unsigned long long)k);
         Slice val = gen.Generate(FLAGS_value_size_);
         // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
         batch.Put(key2, val);
-        batch_bytes += val.size() + key_size_ + user_timestamp_size_;
-        bytes += val.size() + key_size_ + user_timestamp_size_;
+        batch_bytes += val.size() + k_size + user_timestamp_size_;
+        bytesadd += val.size() + k_size + user_timestamp_size_;
         s = db_.db->Write(write_options_, &batch);
-        thread->stats.AddBytes(bytes);
+        thread->stats.AddBytes(bytesadd);
         thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
         if (!s.ok()) {
           fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
           ErrorExit();
         } 
-      }else{}
+      }else if(row_data[5]=="cas"){
+        char formatcas[20];
+        char key1[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(formatcas, sizeof(formatcas), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatcas, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+        auto sta2 = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        bytesread = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesread);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
+        if (sta2.ok()) {
+          char format3[20];
+          char key3[100];
+          const uint64_t k = std::stoull(row_data[1]);
+          std::snprintf(format3, sizeof(format3), "%%0%dllu", k_size);
+          std::snprintf(key3, sizeof(key3), format3, (unsigned long long)k);
+          Slice val3 = gen.Generate(FLAGS_value_size_);
+          // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val3.size()); // 输出写入的键和值大小
+          batch.Put(key3, val3);
+          batch_bytes += val3.size() + k_size + user_timestamp_size_;
+          bytes += val3.size() + k_size + user_timestamp_size_;
+          s = db_.db->Write(write_options_, &batch);
+          thread->stats.AddBytes(bytes);
+          thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
+        }
+      }else{
+
+      }
     }
     thread->stats.print_mem_usage();
     thread->stats.printf_mem(db_.db);

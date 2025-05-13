@@ -71,14 +71,16 @@ for i in {10..10}; do
             stats_interva=$((num_entries / 100))
             num_entries=1000000000
 
-            for cluster_a in  30  35 51; do  # 
+            for cluster_a in 25; do  # 
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
                 for num_kvs in 200000000 400000000 600000000 800000000 1000000000; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 4 8 10 12 16 32; do
+                for blk_size in 1 4 8 10 16 32; do
+                for blk_cache_size in 32 128 512 1024; do
+                for table_cache_size in 300 1000 5000 10000; do
                     # buffer_size=67108864
                     # buffer_size=2097152
                     target_file_base=67108864
@@ -90,9 +92,9 @@ for i in {10..10}; do
                     value_size_twitter=${cluster_value_size_map[$cluster_a]}
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                    log_file="RocksDB_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}.log"
+                    log_file="RocksDB_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
                     data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                    memory_log_file="$(pwd)/RocksDB_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}.log"      
+                    memory_log_file="$(pwd)/RocksDB_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -101,7 +103,7 @@ for i in {10..10}; do
                     fi
 
                     # 创建相应的目录
-                    db_dir="/mnt/db_test2/rocks10B/Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}"
+                    db_dir="/mntdisk/rocks10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -163,12 +165,11 @@ for i in {10..10}; do
                         DB_BENCH_PID=$(pgrep -af "db_bench --db=$db_dir" | grep -v 'sudo' | awk '{print $1}')
                         echo "Selected DB_BENCH_PID: $DB_BENCH_PID"
 
-                        perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}.txt" &
+                        perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.txt" &
                         PERF_PID=$!
 
                         wait $DB_BENCH_PID
 
-                        # 结束 iostat 进程
                         echo "Checking if perf stat process with PID $PERF_PID is still running..."
                         ps -p $PERF_PID > /dev/null # 重定向标准输出到 /dev/null，只检查退出状态
                         if [ $? -eq 0 ]; then
@@ -190,7 +191,9 @@ for i in {10..10}; do
                         else
                             echo "perf stat process $PERF_PID is no longer running (it might have ended with db_bench)."
                         fi
-
+    
+                    done
+                    done
                     done
                     done
                     done
