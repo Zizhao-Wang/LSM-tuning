@@ -5471,6 +5471,9 @@ class Benchmark {
                       FLAGS_write_batch_protection_bytes_per_key,
                       user_timestamp_size_);
     Status s;
+    int64_t bytesadd = 0;
+    int64_t bytesget = 0;
+    int64_t bytesread = 0;
     int64_t bytes = 0;
     int id = 0;
 
@@ -5569,9 +5572,9 @@ class Benchmark {
         if (sta2.ok()) {
           char format3[20];
           char key3[100];
-          const uint64_t k = std::stoull(row_data[1]);
+          const uint64_t cask = std::stoull(row_data[1]);
           std::snprintf(format3, sizeof(format3), "%%0%dllu", k_size);
-          std::snprintf(key3, sizeof(key3), format3, (unsigned long long)k);
+          std::snprintf(key3, sizeof(key3), format3, (unsigned long long)cask);
           Slice val3 = gen.Generate(FLAGS_value_size_);
           // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val3.size()); // 输出写入的键和值大小
           batch.Put(key3, val3);
