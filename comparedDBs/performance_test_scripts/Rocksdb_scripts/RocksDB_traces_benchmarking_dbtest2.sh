@@ -7,6 +7,17 @@ billion=1000000000
 
 DEVICE_NAME="nvme1n1"
 
+# 为每个 num_kvs2 指定不同的 table_cache_size 列表
+# 键是 num_kvs2 的原始整数值，值是空格分隔的 table_cache_size 列表
+declare -A table_cache_map
+table_cache_map[200000000]="300 500"
+table_cache_map[400000000]="15 35 55"
+table_cache_map[600000000]="25 50 65"
+table_cache_map[800000000]="20 50 80"
+table_cache_map[1000000000]="300 1000 5000 10000"
+# ============================================================
+
+
 declare -A slowdown_map
 declare -A stop_map
 
@@ -75,14 +86,14 @@ for i in {10..10}; do
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
-                for num_kvs2 in 200000000 400000000 600000000 800000000 1000000000; do
+                for num_kvs2 in 400000000 600000000 800000000 1000000000; do
                 num_format3=$(convert_to_billion_format "$num_kvs2")
-                    for workload_kvs in 100000000 200000000 300000000 400000000 500000000; do
+                    for workload_kvs in 100000000 ; do #200000000 300000000 400000000 500000000
                     num_format2=$(convert_to_billion_format "$workload_kvs")
                     echo "原始值: $workload_kvs, 转换后: $num_format2"
                     for blk_size in 1 4 8 10 16 32; do
                     for blk_cache_size in 32 128 512 1024; do
-                    for table_cache_size in 300 1000 5000 10000; do
+                    for table_cache_size in ${table_cache_map[$num_kvs2]}; do
                         # buffer_size=67108864
                         # buffer_size=2097152
                         target_file_base=67108864

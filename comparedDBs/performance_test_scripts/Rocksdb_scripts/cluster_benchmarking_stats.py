@@ -2,38 +2,44 @@ import os
 import re
 import csv
 
-# ====== 配置区：把下面的变量改成你自己的路径或命名 ======
-# 日志所在目录（不带末尾斜杠）
-LOG_DIR = "/home/jeff-wang/LSM-tuning/comparedDBs/performance_test_scripts/Rocksdb_scripts/10B_RocksDB_TwitterCluster30_Benchmarking"
-
-# 输出目录后缀，会在 LOG_DIR 后面拼接上这个后缀
-STATS_DIR_SUFFIX = "Stats"
-
-# 匹配日志文件的正则：只处理 RocksDB_<实数>B_in<实数>B… .log
-LOG_FILE_PATTERN = re.compile(r'^RocksDB_\d+(\.\d+)?B_in\d+(\.\d+)?B.*\.log$')
-# ============================================================
+# ====== 配置区 ======
+LOG_DIR = "/home/jeff-wang/LSM-tuning/comparedDBs/performance_test_scripts/Rocksdb_scripts/10B_RocksDB_TwitterCluster30_Benchmarking"        # 日志目录
+STATS_DIR_SUFFIX = "Stats"               # 输出目录后缀
+LOG_FILE_PATTERN = re.compile(
+    r'^RocksDB_\d+(\.\d+)?B_in\d+(\.\d+)?B.*\.log$'
+)
+# ==================
 
 def parse_log_file(filepath):
-    """解析单个 log 文件，返回一个参数字典"""
+    """解析单个日志，失败则返回 None，成功返回字典"""
     with open(filepath, 'r') as f:
         content = f.read()
 
-    # 提取平均延迟
-    latency_match = re.search(r"clusterQuery\s*:\s*([\d\.]+)\s+micros/op", content)
-    average_latency = float(latency_match.group(1)) if latency_match else None
+    # 1. 平均延迟
+    latency_m = re.search(r"clusterQuery\s*:\s*([\d\.]+)\s+micros/op", content)
+    # 2. 三项 cache 统计
+    miss_m = re.search(r"rocksdb\.block\.cache\.miss COUNT\s*:\s*(\d+)", content)
+    hit_m  = re.search(r"rocksdb\.block\.cache\.hit COUNT\s*:\s*(\d+)", content)
+    add_m  = re.search(r"rocksdb\.block\.cache\.add COUNT\s*:\s*(\d+)", content)
 
-    # 提取 block cache 统计
-    miss = int(re.search(r"rocksdb\.block\.cache\.miss COUNT\s*:\s*(\d+)", content).group(1))
-    hit  = int(re.search(r"rocksdb\.block\.cache\.hit COUNT\s*:\s*(\d+)", content).group(1))
-    add  = int(re.search(r"rocksdb\.block\.cache\.add COUNT\s*:\s*(\d+)", content).group(1))
+    # 如果任何一项关键数据匹配失败，跳过此文件
+    if not (latency_m and miss_m and hit_m and add_m):
+        return None
+
+    # 解析数值
+    average_latency = float(latency_m.group(1))
+    miss = int(miss_m.group(1))
+    hit  = int(hit_m.group(1))
+    add  = int(add_m.group(1))
     miss_rate = miss / (miss + hit) if (miss + hit) > 0 else None
 
-    # 从文件名解析各参数
+    # 从文件名解析其它参数
     filename = os.path.basename(filepath)
     params = {'filename': filename}
     parts = filename.rstrip('.log').split('_')
     for part in parts:
         if re.match(r'^\d+(\.\d+)?B$', part):
+            # 第一个匹配到的作为 query_data_size，第二个作为 write_data_size
             if 'query_data_size' not in params:
                 params['query_data_size'] = part
             else:
@@ -53,12 +59,15 @@ def parse_log_file(filepath):
             params[key + 'base'] = val
         elif part.startswith('targetbase'):
             params['targetbase'] = part.replace('targetbase', '')
+        elif re.match(r'^Blk\d+$', part):
+            # 新增：解析 Blk<数字> 为 block size
+            params['block_size'] = part[3:]
         elif part.startswith('Blkcache'):
             params['block_cache'] = part.replace('Blkcache', '')
         elif part.startswith('Tabcache'):
             params['table_cache'] = part.replace('Tabcache', '')
 
-    # 添加统计指标
+    # 添加统计字段
     params.update({
         'average_latency_micros': average_latency,
         'block_cache_miss_rate':  miss_rate,
@@ -69,25 +78,25 @@ def parse_log_file(filepath):
     return params
 
 def main(log_dir):
-    # 自动在 log_dir 后面加上后缀，作为输出目录
     stats_dir = f"{log_dir}{STATS_DIR_SUFFIX}"
     os.makedirs(stats_dir, exist_ok=True)
 
     rows = []
     for fname in os.listdir(log_dir):
         if not LOG_FILE_PATTERN.match(fname):
-            continue  # 跳过不符合模式的文件
-        path = os.path.join(log_dir, fname)
-        try:
-            rows.append(parse_log_file(path))
-        except Exception as e:
-            print(f"Warning: 解析文件 {fname} 失败：{e}")
+            continue
+        fullpath = os.path.join(log_dir, fname)
+        result = parse_log_file(fullpath)
+        if result is None:
+            # 匹配不全，跳过此文件
+            continue
+        rows.append(result)
 
     if not rows:
-        print("未找到任何符合模式的 log 文件。")
+        print("未找到任何符合条件且完整匹配的 log 文件，CSV 未生成。")
         return
 
-    # 写入 CSV
+    # 写 CSV
     output_csv = os.path.join(stats_dir, "parsed_results.csv")
     fieldnames = list(rows[0].keys())
     with open(output_csv, 'w', newline='') as csvfile:
@@ -97,6 +106,5 @@ def main(log_dir):
 
     print(f"已将结果写入：{output_csv}")
 
-# 脚本入口
 if __name__ == "__main__":
     main(LOG_DIR)
