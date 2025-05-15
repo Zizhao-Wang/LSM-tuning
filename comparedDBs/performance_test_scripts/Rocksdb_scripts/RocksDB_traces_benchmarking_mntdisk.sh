@@ -106,7 +106,7 @@ for i in {10..10}; do
                         fi
 
                         # 创建相应的目录
-                        db_dir="/mntdisk/rocks10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                        db_dir="/mntdisk/rocks10B/PreLoad_Cluster${cluster_a}_${num_format3}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
 
 
                         # 获取对应ct0的slowdown和stop值

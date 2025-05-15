@@ -11,7 +11,7 @@ LOG_FILE_PATTERN = re.compile(
 # ==================
 
 def parse_log_file(filepath):
-    """解析单个日志，失败则返回 None，成功返回字典"""
+    """解析单个日志，失败则返回 None,成功返回字典"""
     with open(filepath, 'r') as f:
         content = f.read()
 

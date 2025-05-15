@@ -17,7 +17,6 @@ table_cache_map[800000000]="20 50 80"
 table_cache_map[1000000000]="300 1000 5000 10000"
 # ============================================================
 
-
 declare -A slowdown_map
 declare -A stop_map
 
