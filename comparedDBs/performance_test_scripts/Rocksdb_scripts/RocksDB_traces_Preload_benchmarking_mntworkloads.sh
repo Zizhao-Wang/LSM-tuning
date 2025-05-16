@@ -90,7 +90,7 @@ for i in {10..10}; do
                     echo "原始值: $num_kvs, 转换后: $num_format"
                 for blk_size in 1 4 8 10 16 32; do
                 for blk_cache_size in 32 128 512 1024; do
-                for table_cache_size in 300 1000 5000 10000; do
+                for table_cache_size in 300 1000 5000; do
                     # buffer_size=67108864
                     # buffer_size=2097152
                     target_file_base=67108864

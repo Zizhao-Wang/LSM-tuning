@@ -11,38 +11,60 @@ LOG_FILE_PATTERN = re.compile(
 # ==================
 
 def parse_log_file(filepath):
-    """解析单个日志，失败则返回 None,成功返回字典"""
+    """解析单个日志，失败则返回 None, 成功返回字典"""
     with open(filepath, 'r') as f:
         content = f.read()
 
-    # 1. 平均延迟
+    # 匹配平均延迟和 block cache 统计
     latency_m = re.search(r"clusterQuery\s*:\s*([\d\.]+)\s+micros/op", content)
-    # 2. 三项 cache 统计
     miss_m = re.search(r"rocksdb\.block\.cache\.miss COUNT\s*:\s*(\d+)", content)
     hit_m  = re.search(r"rocksdb\.block\.cache\.hit COUNT\s*:\s*(\d+)", content)
     add_m  = re.search(r"rocksdb\.block\.cache\.add COUNT\s*:\s*(\d+)", content)
-
-    # 如果任何一项关键数据匹配失败，跳过此文件
     if not (latency_m and miss_m and hit_m and add_m):
         return None
-
-    # 解析数值
     average_latency = float(latency_m.group(1))
-    miss = int(miss_m.group(1))
-    hit  = int(hit_m.group(1))
-    add  = int(add_m.group(1))
+    miss = int(miss_m.group(1)); hit = int(hit_m.group(1)); add = int(add_m.group(1))
     miss_rate = miss / (miss + hit) if (miss + hit) > 0 else None
 
-    # 从文件名解析其它参数
+    # 匹配 L0/L1/L2andup 命中
+    l0 = re.search(r"rocksdb\.l0\.hit COUNT\s*:\s*(\d+)", content)
+    l1 = re.search(r"rocksdb\.l1\.hit COUNT\s*:\s*(\d+)", content)
+    l2u = re.search(r"rocksdb\.l2andup\.hit COUNT\s*:\s*(\d+)", content)
+    l0_hits = int(l0.group(1)) if l0 else None
+    l1_hits = int(l1.group(1)) if l1 else None
+    l2u_hits = int(l2u.group(1)) if l2u else None
+
+    # 匹配 Bloom filter 统计
+    b_useful = re.search(r"rocksdb\.bloom\.filter\.useful COUNT\s*:\s*(\d+)", content)
+    b_full_pos = re.search(r"rocksdb\.bloom\.filter\.full\.positive COUNT\s*:\s*(\d+)", content)
+    b_full_tp = re.search(r"rocksdb\.bloom\.filter\.full\.true\.positive COUNT\s*:\s*(\d+)", content)
+    bloom_useful = int(b_useful.group(1)) if b_useful else None
+    bloom_full_pos = int(b_full_pos.group(1)) if b_full_pos else None
+    bloom_full_tp = int(b_full_tp.group(1)) if b_full_tp else None
+    bloom_false_pos_count = None
+    bloom_false_pos_rate = None
+    if bloom_full_pos is not None and bloom_full_tp is not None and bloom_full_pos > 0:
+        bloom_false_pos_count = bloom_full_pos - bloom_full_tp
+        bloom_false_pos_rate = bloom_false_pos_count / bloom_full_pos
+
+    # 匹配 read.block.get.micros SUM
+    read_get = re.search(
+        r"rocksdb\.read\.block\.get\.micros[\s\S]*?SUM\s*:\s*([\d\.]+)", content
+    )
+    read_get_sum = float(read_get.group(1)) if read_get else None
+    # 计算因 Bloom 假阳性导致的额外 IO 时间 (秒)
+    false_io_time_sec = None
+    if read_get_sum is not None and bloom_false_pos_rate is not None:
+        false_io_time_sec = (read_get_sum * bloom_false_pos_rate) / 1e6
+
+    # 解析文件名参数
     filename = os.path.basename(filepath)
     params = {'filename': filename}
     parts = filename.rstrip('.log').split('_')
     for part in parts:
         if re.match(r'^\d+(\.\d+)?B$', part):
-            # 第一个匹配到的作为 query_data_size，第二个作为 write_data_size
-            if 'query_data_size' not in params:
-                params['query_data_size'] = part
-            else:
+            params.setdefault('query_data_size', part)
+            if 'query_data_size' in params and params['query_data_size'] != part:
                 params['write_data_size'] = part
         elif part.startswith('in') and re.match(r'^in\d+(\.\d+)?B$', part):
             params['write_data_size'] = part[2:]
@@ -51,60 +73,57 @@ def parse_log_file(filepath):
         elif part.startswith('mem'):
             params['mem_size'] = part[3:]
         elif part.startswith('Cluster'):
-            params['cluster'] = part.replace('Cluster', '')
+            params['cluster'] = part.replace('Cluster','')
         elif part.startswith('CT'):
             params['CT'] = part[2:]
         elif part.startswith('level') and 'base' in part:
-            key, val = part.split('base', 1)
-            params[key + 'base'] = val
+            k,v = part.split('base',1); params[k+'base']=v
         elif part.startswith('targetbase'):
-            params['targetbase'] = part.replace('targetbase', '')
-        elif re.match(r'^Blk\d+$', part):
-            # 新增：解析 Blk<数字> 为 block size
-            params['block_size'] = part[3:]
+            params['targetbase']=part.replace('targetbase','')
+        elif re.match(r'^Blk\d+$',part):
+            params['block_size']=part[3:]
         elif part.startswith('Blkcache'):
-            params['block_cache'] = part.replace('Blkcache', '')
+            params['block_cache']=part.replace('Blkcache','')
         elif part.startswith('Tabcache'):
-            params['table_cache'] = part.replace('Tabcache', '')
+            params['table_cache']=part.replace('Tabcache','')
 
-    # 添加统计字段
+    # 聚合结果
     params.update({
         'average_latency_micros': average_latency,
-        'block_cache_miss_rate':  miss_rate,
-        'block_cache_miss':       miss,
-        'block_cache_hit':        hit,
-        'block_cache_add':        add,
+        'block_cache_miss_rate': miss_rate,
+        'block_cache_miss': miss,
+        'block_cache_hit': hit,
+        'block_cache_add': add,
+        'l0_hit_count': l0_hits,
+        'l1_hit_count': l1_hits,
+        'l2andup_hit_count': l2u_hits,
+        'bloom_filter_useful': bloom_useful,
+        'bloom_full_positive': bloom_full_pos,
+        'bloom_full_true_positive': bloom_full_tp,
+        'bloom_false_positive_count': bloom_false_pos_count,
+        'bloom_false_positive_rate': bloom_false_pos_rate,
+        'read_block_get_sum_micros': read_get_sum,
+        'false_positive_io_time_sec': false_io_time_sec,
     })
     return params
+
 
 def main(log_dir):
     stats_dir = f"{log_dir}{STATS_DIR_SUFFIX}"
     os.makedirs(stats_dir, exist_ok=True)
-
     rows = []
     for fname in os.listdir(log_dir):
-        if not LOG_FILE_PATTERN.match(fname):
-            continue
-        fullpath = os.path.join(log_dir, fname)
-        result = parse_log_file(fullpath)
-        if result is None:
-            # 匹配不全，跳过此文件
-            continue
-        rows.append(result)
-
+        if not LOG_FILE_PATTERN.match(fname): continue
+        res = parse_log_file(os.path.join(log_dir, fname))
+        if res: rows.append(res)
     if not rows:
-        print("未找到任何符合条件且完整匹配的 log 文件，CSV 未生成。")
+        print("未找到符合条件的日志，未生成 CSV。")
         return
+    out_csv = os.path.join(stats_dir,'parsed_results.csv')
+    with open(out_csv,'w',newline='') as cf:
+        writer=csv.DictWriter(cf,fieldnames=list(rows[0].keys()))
+        writer.writeheader(); writer.writerows(rows)
+    print(f"结果已写入 {out_csv}")
 
-    # 写 CSV
-    output_csv = os.path.join(stats_dir, "parsed_results.csv")
-    fieldnames = list(rows[0].keys())
-    with open(output_csv, 'w', newline='') as csvfile:
-        writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-        writer.writeheader()
-        writer.writerows(rows)
-
-    print(f"已将结果写入：{output_csv}")
-
-if __name__ == "__main__":
+if __name__=='__main__':
     main(LOG_DIR)

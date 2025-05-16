@@ -13,7 +13,7 @@ STATS_CSV = WORK_DIR / "parsed_results.csv"
 # 如果值是字符串，则按等值过滤；如果是列表，则按成员过滤
 FILTER_PARAMS = {
     "table_cache": "300",
-    "block_cache": "512",
+    "block_cache": "32",
     # 多值过滤示例：只保留这些 block_size
     "block_size": ["1", "4", "8", "10", "16", "32"],
 }
@@ -22,7 +22,7 @@ FILTER_PARAMS = {
 SORT_KEY = "block_size"
 
 # 要输出的指标列（不再输出 filename）
-METRICS = ["average_latency_micros", "block_cache_miss_rate"]
+METRICS = ["average_latency_micros", "block_cache_miss_rate","bloom_false_positive_rate","false_positive_io_time_sec","l0_hit_count","l1_hit_count","l2andup_hit_count"]
 # ============================================================
 
 def load_rows(csv_path):
