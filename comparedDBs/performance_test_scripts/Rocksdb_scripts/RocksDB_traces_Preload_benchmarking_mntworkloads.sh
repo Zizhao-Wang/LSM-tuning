@@ -71,7 +71,7 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_Twitter_PreLoad_Performance"
+    dir1="${i}B_RocksDB_SATASSD_TwitterCluster35_PreLoad_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -88,7 +88,7 @@ for i in {10..10}; do
                 for num_kvs in ${cluster_num_kvs_map[$cluster_a]}; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 4 8 10 16 32; do
+                for blk_size in 1 4 8 10 ; do
                 for blk_cache_size in 32 128 512 1024; do
                 for table_cache_size in 300 1000 5000; do
                     # buffer_size=67108864
