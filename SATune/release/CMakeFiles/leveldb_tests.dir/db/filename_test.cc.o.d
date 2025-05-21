@@ -279,6 +279,7 @@ CMakeFiles/leveldb_tests.dir/db/filename_test.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/db.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/iterator.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/filter_policy.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/coding.h \

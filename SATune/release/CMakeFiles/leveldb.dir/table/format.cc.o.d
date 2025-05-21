@@ -141,6 +141,7 @@ CMakeFiles/leveldb.dir/table/format.cc.o: \
  /usr/include/c++/11/bits/uniform_int_dist.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/env.h \
  /usr/include/c++/11/cstdarg /usr/include/c++/11/vector \
  /usr/include/c++/11/bits/stl_uninitialized.h \

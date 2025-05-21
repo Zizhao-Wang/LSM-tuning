@@ -14,8 +14,6 @@ CMakeFiles/leveldb.dir/util/options.cc.o: \
  /usr/include/x86_64-linux-gnu/gnu/stubs-64.h \
  /usr/include/x86_64-linux-gnu/c++/11/bits/cpu_defines.h \
  /usr/lib/gcc/x86_64-linux-gnu/11/include/stddef.h \
- /home/jeff-wang/LSM-tuning/SATune/include/leveldb/export.h \
- /home/jeff-wang/LSM-tuning/SATune/include/leveldb/comparator.h \
  /usr/include/c++/11/string /usr/include/c++/11/bits/stringfwd.h \
  /usr/include/c++/11/bits/memoryfwd.h \
  /usr/include/c++/11/bits/char_traits.h \
@@ -130,6 +128,9 @@ CMakeFiles/leveldb.dir/util/options.cc.o: \
  /usr/include/c++/11/bits/functional_hash.h \
  /usr/include/c++/11/bits/hash_bytes.h \
  /usr/include/c++/11/bits/basic_string.tcc \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/export.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/comparator.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/env.h \
  /usr/include/c++/11/cstdarg /usr/include/c++/11/vector \
  /usr/include/c++/11/bits/stl_uninitialized.h \

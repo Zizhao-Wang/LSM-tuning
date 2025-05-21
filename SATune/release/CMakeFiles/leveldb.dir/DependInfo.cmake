@@ -46,6 +46,7 @@ set(CMAKE_DEPENDS_DEPENDENCY_FILES
   "/home/jeff-wang/LSM-tuning/SATune/util/logging.cc" "CMakeFiles/leveldb.dir/util/logging.cc.o" "gcc" "CMakeFiles/leveldb.dir/util/logging.cc.o.d"
   "/home/jeff-wang/LSM-tuning/SATune/util/options.cc" "CMakeFiles/leveldb.dir/util/options.cc.o" "gcc" "CMakeFiles/leveldb.dir/util/options.cc.o.d"
   "/home/jeff-wang/LSM-tuning/SATune/util/status.cc" "CMakeFiles/leveldb.dir/util/status.cc.o" "gcc" "CMakeFiles/leveldb.dir/util/status.cc.o.d"
+  "/home/jeff-wang/LSM-tuning/SATune/util/trace.cc" "CMakeFiles/leveldb.dir/util/trace.cc.o" "gcc" "CMakeFiles/leveldb.dir/util/trace.cc.o.d"
   )
 
 # Targets to which this target links.

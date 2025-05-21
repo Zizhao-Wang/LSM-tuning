@@ -769,15 +769,9 @@ class SingletonEnv {
 #endif  // !defined(NDEBUG)
     static_assert(sizeof(env_storage_) >= sizeof(EnvType),
                   "env_storage_ will not fit the Env");
-    // static_assert(std::is_standard_layout_v<SingletonEnv<EnvType>>);
-    static_assert(std::is_standard_layout<SingletonEnv<EnvType>>::value,
-                  "SingletonEnv<EnvType is not a standard layout type");
-    static_assert(
-        offsetof(SingletonEnv<EnvType>, env_storage_) % alignof(EnvType) == 0,
-        "env_storage_ does not meet the Env's alignment needs");
-    static_assert(alignof(SingletonEnv<EnvType>) % alignof(EnvType) == 0,
+    static_assert(alignof(decltype(env_storage_)) >= alignof(EnvType),
                   "env_storage_ does not meet the Env's alignment needs");
-    new (env_storage_) EnvType();
+    new (&env_storage_) EnvType();
   }
   ~SingletonEnv() = default;
 
@@ -793,7 +787,8 @@ class SingletonEnv {
   }
 
  private:
-  alignas(EnvType) char env_storage_[sizeof(EnvType)];
+  typename std::aligned_storage<sizeof(EnvType), alignof(EnvType)>::type
+      env_storage_;
 #if !defined(NDEBUG)
   static std::atomic<bool> env_initialized_;
 #endif  // !defined(NDEBUG)

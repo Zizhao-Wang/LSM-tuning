@@ -58,6 +58,7 @@ if("x${CMAKE_INSTALL_COMPONENT}x" STREQUAL "xUnspecifiedx" OR NOT CMAKE_INSTALL_
     "/home/jeff-wang/LSM-tuning/SATune/include/leveldb/filter_policy.h"
     "/home/jeff-wang/LSM-tuning/SATune/include/leveldb/iterator.h"
     "/home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h"
+    "/home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h"
     "/home/jeff-wang/LSM-tuning/SATune/include/leveldb/slice.h"
     "/home/jeff-wang/LSM-tuning/SATune/include/leveldb/status.h"
     "/home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h"

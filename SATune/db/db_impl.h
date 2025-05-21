@@ -8,6 +8,9 @@
 #include <atomic>
 #include <deque>
 #include <set>
+#include <map>
+#include <unordered_set>
+#include <unordered_map>
 #include <string>
 
 #include "db/dbformat.h"
@@ -17,6 +20,9 @@
 #include "leveldb/env.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
+#include "leveldb/compaction_options.h"
+
+
 
 namespace leveldb {
 
@@ -25,6 +31,23 @@ class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
+
+struct CompactionOptionsAtomic {
+  std::atomic<int>    compaction_trigger;
+  std::atomic<int>    slowdown_writes_trigger;
+  std::atomic<int>    stop_writes_trigger;
+  std::atomic<int64_t> file_size_generated_in_compaction;
+  std::atomic<size_t>  block_size;
+
+  // 从非原子版初始化
+  explicit CompactionOptionsAtomic(const CompactionOptions& o)
+    : compaction_trigger(o.compaction_trigger),
+    slowdown_writes_trigger(o.slowdown_writes_trigger),
+    stop_writes_trigger(o.stop_writes_trigger),
+    file_size_generated_in_compaction(o.file_size_generated_in_compaction),
+    block_size(o.block_size) {}
+};
+
 
 class DBImpl : public DB {
  public:
@@ -54,6 +77,19 @@ class DBImpl : public DB {
   // Compact any files in the named level that overlap [*begin,*end]
   void TEST_CompactRange(int level, const Slice* begin, const Slice* end);
 
+
+  // ██╗    ██╗███████╗███████╗
+  // ██║    ██║╚══███╔╝╚══███╔╝
+  // ██║ █╗ ██║  ███╔╝   ███╔╝ 
+  // ██║███╗██║ ███╔╝   ███╔╝  
+  // ╚███╔███╔╝███████╗███████╗
+  //  ╚══╝╚══╝ ╚══════╝╚══════╝
+  //  This function is an extension of the GetProperty from LevelDB, crafted by WZZ.
+  //  It is designed to fetch comprehensive LSM (Log-Structured Merge-tree) related information,
+  //  providing insights not just on the requested level, but across the entire LSM tree.
+  //  This enhanced visibility is crucial for debugging and fine-tuning the store's performance and storage efficiency.
+  bool GetProperty_with_whole_lsm(const Slice& property, std::string* value);
+
   // Force current memtable contents to be compacted.
   Status TEST_CompactMemTable();
 
@@ -72,9 +108,12 @@ class DBImpl : public DB {
   void RecordReadSample(Slice key);
 
  private:
+
   friend class DB;
   struct CompactionState;
   struct Writer;
+
+  CompactionOptionsAtomic compaction_opts_atomic_;
 
   // Information for a manual compaction
   struct ManualCompaction {
@@ -88,7 +127,7 @@ class DBImpl : public DB {
   // Per level compaction stats.  stats_[level] stores the stats for
   // compactions that produced data for the specified "level".
   struct CompactionStats {
-    CompactionStats() : micros(0), bytes_read(0), bytes_written(0) {}
+    CompactionStats() : micros(0), bytes_read(0), bytes_written(0){}
 
     void Add(const CompactionStats& c) {
       this->micros += c.micros;
@@ -101,32 +140,86 @@ class DBImpl : public DB {
     int64_t bytes_written;
   };
 
-  // Per level skewness stats. 
-  struct SkewnessCount {
-    // 存储 (文件编号, 偏度) 对
-    std::vector<std::pair<int,double>> file_skewness;
-    // 所有偏度值的平均数
-    double average_skewness;
 
-    // 1. 默认构造：空列表，平均偏度为 0
-    SkewnessCount(): average_skewness(0.0){}
+    struct new_LeveldataStats {
+    new_LeveldataStats()
+    : micros(0), 
+      bytes_read(0), 
+      bytes_written(0), 
+      bytes_read_hot(0), 
+      bytes_written_hot(0), 
+      number_of_compactions(0), 
+      user_bytes_written(0), 
+      moved_directly_from_last_level_bytes(0), 
+      moved_from_this_level_bytes(0),
+      number_size_compaction(0),
+      number_size_compaction_initiator_files(0),
+      number_size_compaction_participant_files(0),
+      number_seek_compaction(0),
+      number_seek_compaction_initiator_files(0),
+      number_seek_compaction_participant_files(0),
+      number_manual_compaction(0),
+      number_TrivialMove(0),
+      bytes_read_cold(0),
+      bytes_written_cold(0) {}
 
-    // 2. 单条目构造：初始化时就加入一个 (file_number, skewness)
-    SkewnessCount(int file_number, double skewness) {
-      file_skewness.emplace_back(file_number, skewness);
-      average_skewness = skewness;
+    void Add(const new_LeveldataStats& c) {
+      this->micros += c.micros;
+      this->bytes_read += c.bytes_read;
+      this->bytes_written += c.bytes_written;
+
+      // Note: Assuming user_bytes_written should be accumulated as well.
+      this->bytes_read_hot += c.bytes_read_hot;
+      this->bytes_written_hot += c.bytes_written_hot;
+      this->number_of_compactions += c.number_of_compactions;
+      this->user_bytes_written += c.user_bytes_written;
+      
     }
 
-    // 3. 成员函数：添加新的 (file_number, skewness) 并更新平均偏度
-    void addEntry(int file_number, double skewness) {
-      file_skewness.emplace_back(file_number, skewness);
-      // 重新计算平均偏度
-      double sum = 0.0;
-      for (auto &p : file_skewness) {
-        sum += p.second;
-      }
-      average_skewness = sum / file_skewness.size();
-    }
+    int64_t micros;
+    int64_t bytes_read;
+    int64_t bytes_written;
+
+    // Newly added fields
+    int64_t bytes_read_hot;
+    int64_t bytes_read_cold;
+    int64_t bytes_written_hot;
+    int64_t bytes_written_cold;
+    int32_t number_of_compactions;
+    int64_t user_bytes_written;
+    int64_t moved_directly_from_last_level_bytes;
+    int64_t moved_from_this_level_bytes;
+
+    // Count of size compactions performed.
+    // Number of files that initiated size compactions.
+    // These are the files that directly triggered a size compaction due to exceeding certain thresholds.
+    int32_t number_size_compaction;
+    int32_t number_size_compaction_initiator_files;
+    int32_t number_size_compaction_participant_files;
+
+    // Count of seek compactions performed.
+    int32_t number_seek_compaction;
+    int32_t number_seek_compaction_initiator_files;
+    int32_t number_seek_compaction_participant_files;
+
+    int32_t number_manual_compaction;
+    int32_t number_TrivialMove;
+  };
+
+  struct LevelHotColdStats {
+    
+    LevelHotColdStats() 
+        : bytes_read_hot(0), 
+          bytes_written_hot(0), 
+          bytes_read_cold(0), 
+          bytes_written_cold(0),
+          total_count_hc(0) {}
+
+    int64_t bytes_read_hot;
+    int64_t bytes_written_hot;
+    int64_t bytes_read_cold;
+    int64_t bytes_written_cold;
+    int64_t total_count_hc;
   };
 
   Iterator* NewInternalIterator(const ReadOptions&,
@@ -183,6 +276,42 @@ class DBImpl : public DB {
     return internal_comparator_.user_comparator();
   }
 
+  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+  void loadKeysFromCSV(const std::string& filePath);
+
+  bool isSpecialKey(const Slice& key) {
+    return specialKeys.find(key) != specialKeys.end();
+  }
+
+  void testSpecialKeys();
+
+  void load_keys_from_CSV(const std::string& filePath);
+
+  void batch_load_keys_from_CSV(const std::string& filePath, const std::string& percentagesStr);
+
+  void batch_load_keys_from_CSV2(const std::string& filePath, const std::string& percentagesStr);
+
+  bool is_hot_key(uint64_t key) {
+    return hot_keys.find(key) != hot_keys.end();
+  }
+
+  bool is_hot_key(int percentage, uint64_t key) {
+    auto it = hot_keys_sets.find(percentage);
+    if (it != hot_keys_sets.end()) {
+        return it->second.find(key) != it->second.end();
+    }
+    return false; // 如果没有找到对应的percentage，返回false
+  }
+
+
+  void test_hot_keys();
+
+  std::vector<int> GetLevelPercents();
+
+  void initialize_level_hotcoldstats();
+
+  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+
   // Constant after construction
   Env* const env_;
   const InternalKeyComparator internal_comparator_;
@@ -200,6 +329,7 @@ class DBImpl : public DB {
 
   // State below is protected by mutex_
   port::Mutex mutex_;
+
   std::atomic<bool> shutting_down_;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
   MemTable* mem_;
@@ -232,7 +362,34 @@ class DBImpl : public DB {
 
   CompactionStats stats_[config::kNumLevels] GUARDED_BY(mutex_);
 
-  SkewnessCount multi_level_skewness_[config::kNumLevels] GUARDED_BY(mutex_);
+  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+  new_LeveldataStats level_stats_[config::kNumLevels] GUARDED_BY(mutex_);
+  std::vector<std::map<unsigned, LevelHotColdStats>> level_hot_cold_stats GUARDED_BY(mutex_);
+  std::pair<Slice, Slice> hot_range;
+
+  struct SliceHash {
+    size_t operator()(const leveldb::Slice& slice) const {
+        return std::hash<std::string>()(std::string(slice.data(), slice.size()));
+      }
+  };
+
+  // 定义一个自定义相等函数
+  struct SliceEqual {
+      bool operator()(const leveldb::Slice& lhs, const leveldb::Slice& rhs) const {
+          return lhs.compare(rhs) == 0;
+      }
+  };
+
+  const std::string hot_file_path;
+  const std::string percentagesStr;
+  std::unordered_set<leveldb::Slice, SliceHash, SliceEqual> specialKeys;
+  std::unordered_set<uint64_t> hot_keys;
+  std::map<int, std::unordered_set<uint64_t>> hot_keys_sets;
+  std::map<int, std::unordered_map<uint64_t, int>> hot_keys_map;
+  bool is_first;
+  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+
+
 };
 
 // Sanitize db options.  The caller should delete result.info_log if

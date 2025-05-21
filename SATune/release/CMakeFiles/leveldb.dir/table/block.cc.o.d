@@ -149,6 +149,7 @@ CMakeFiles/leveldb.dir/table/block.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./table/format.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/coding.h \
  /home/jeff-wang/LSM-tuning/SATune/./port/port.h \
  /home/jeff-wang/LSM-tuning/SATune/./port/port_stdcxx.h \

@@ -19,6 +19,8 @@
 
 namespace leveldb {
 
+
+
 // Grouping of constants.  We may want to make some of these
 // parameters set via options.
 namespace config {
@@ -45,6 +47,7 @@ static const int kMaxMemCompactLevel = 2;
 static const int kReadBytesPeriod = 1048576;
 
 }  // namespace config
+
 
 class InternalKey;
 

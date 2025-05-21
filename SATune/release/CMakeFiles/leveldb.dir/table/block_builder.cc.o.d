@@ -145,6 +145,7 @@ CMakeFiles/leveldb.dir/table/block_builder.cc.o: \
  /usr/include/c++/11/bits/uniform_int_dist.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/comparator.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/coding.h \
  /home/jeff-wang/LSM-tuning/SATune/./port/port.h \
  /home/jeff-wang/LSM-tuning/SATune/./port/port_stdcxx.h \

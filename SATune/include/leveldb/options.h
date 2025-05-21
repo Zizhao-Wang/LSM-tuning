@@ -6,8 +6,10 @@
 #define STORAGE_LEVELDB_INCLUDE_OPTIONS_H_
 
 #include <cstddef>
+#include <string>
 
 #include "leveldb/export.h"
+#include "leveldb/compaction_options.h"
 
 namespace leveldb {
 
@@ -145,7 +147,24 @@ struct LEVELDB_EXPORT Options {
   // Many applications will benefit from passing the result of
   // NewBloomFilterPolicy() here.
   const FilterPolicy* filter_policy = nullptr;
+
+  
+  //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
+  std::string hot_file_path;
+
+  std::string  compactiontriggered_output_file;
+
+  std::string percentages;
+
+  //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
+
+  // 新增：Compaction 相关参数集合
+  CompactionOptions compaction_opts;
+
+  
 };
+
+
 
 // Options that control read operations
 struct LEVELDB_EXPORT ReadOptions {

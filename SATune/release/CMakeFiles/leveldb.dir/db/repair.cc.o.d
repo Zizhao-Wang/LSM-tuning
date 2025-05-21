@@ -148,12 +148,23 @@ CMakeFiles/leveldb.dir/db/repair.cc.o: \
  /usr/include/c++/11/ext/aligned_buffer.h \
  /usr/include/c++/11/bits/stl_set.h \
  /usr/include/c++/11/bits/stl_multiset.h \
- /usr/include/c++/11/bits/erase_if.h \
+ /usr/include/c++/11/bits/erase_if.h /usr/include/c++/11/map \
+ /usr/include/c++/11/bits/stl_map.h /usr/include/c++/11/tuple \
+ /usr/include/c++/11/array /usr/include/c++/11/bits/uses_allocator.h \
+ /usr/include/c++/11/bits/invoke.h \
+ /usr/include/c++/11/bits/stl_multimap.h \
+ /usr/include/c++/11/unordered_set /usr/include/c++/11/bits/hashtable.h \
+ /usr/include/c++/11/bits/hashtable_policy.h \
+ /usr/include/c++/11/bits/enable_special_members.h \
+ /usr/include/c++/11/bits/unordered_set.h \
+ /usr/include/c++/11/unordered_map \
+ /usr/include/c++/11/bits/unordered_map.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/dbformat.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/comparator.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/db.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/iterator.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/filter_policy.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/coding.h \
@@ -178,9 +189,7 @@ CMakeFiles/leveldb.dir/db/repair.cc.o: \
  /usr/include/c++/11/bits/shared_ptr.h \
  /usr/include/c++/11/bits/shared_ptr_base.h \
  /usr/include/c++/11/bits/allocated_ptr.h \
- /usr/include/c++/11/bits/refwrap.h /usr/include/c++/11/bits/invoke.h \
- /usr/include/c++/11/bits/unique_ptr.h /usr/include/c++/11/tuple \
- /usr/include/c++/11/array /usr/include/c++/11/bits/uses_allocator.h \
+ /usr/include/c++/11/bits/refwrap.h /usr/include/c++/11/bits/unique_ptr.h \
  /usr/include/c++/11/ext/concurrence.h /usr/include/c++/11/mutex \
  /home/jeff-wang/LSM-tuning/SATune/./port/thread_annotations.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/logging.h \

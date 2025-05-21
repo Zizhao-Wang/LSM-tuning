@@ -1944,6 +1944,30 @@ util/testutil.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/testutil.cc.s
 .PHONY : util/testutil.cc.s
 
+util/trace.o: util/trace.cc.o
+.PHONY : util/trace.o
+
+# target to build an object file
+util/trace.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/trace.cc.o
+.PHONY : util/trace.cc.o
+
+util/trace.i: util/trace.cc.i
+.PHONY : util/trace.i
+
+# target to preprocess a source file
+util/trace.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/trace.cc.i
+.PHONY : util/trace.cc.i
+
+util/trace.s: util/trace.cc.s
+.PHONY : util/trace.s
+
+# target to generate assembly for a file
+util/trace.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/trace.cc.s
+.PHONY : util/trace.cc.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -2170,6 +2194,9 @@ help:
 	@echo "... util/testutil.o"
 	@echo "... util/testutil.i"
 	@echo "... util/testutil.s"
+	@echo "... util/trace.o"
+	@echo "... util/trace.i"
+	@echo "... util/trace.s"
 .PHONY : help
 
 

@@ -146,4 +146,5 @@ CMakeFiles/leveldb.dir/table/two_level_iterator.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./table/format.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/./table/iterator_wrapper.h

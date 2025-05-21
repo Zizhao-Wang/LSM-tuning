@@ -151,6 +151,7 @@ CMakeFiles/leveldb.dir/table/table.cc.o: \
  /usr/include/c++/11/bits/vector.tcc \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/filter_policy.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/./table/block.h \
  /home/jeff-wang/LSM-tuning/SATune/./table/filter_block.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/hash.h \

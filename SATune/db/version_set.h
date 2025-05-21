@@ -151,7 +151,7 @@ class Version {
   int refs_;          // Number of live refs to this version
 
   // List of files per level
-  std::vector<FileMetaData*> files_[config::kNumLevels];
+  std::vector<FileMetaData*> files_[config::kNumLevels]; //当前时刻的DB的每一个level的所有的文件集合
 
   // Next file to compact based on seek stats.
   FileMetaData* file_to_compact_;
@@ -189,6 +189,8 @@ class VersionSet {
 
   // Return the current manifest file number
   uint64_t ManifestFileNumber() const { return manifest_file_number_; }
+
+  size_t ComputeBlockSizeForLevel(int level, size_t blocks_per_sst = 1024) const;
 
   // Allocate and return a new file number
   uint64_t NewFileNumber() { return next_file_number_++; }
@@ -269,6 +271,14 @@ class VersionSet {
   };
   const char* LevelSummary(LevelSummaryStorage* scratch) const;
 
+  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+  void set_overlap_range(const std::vector<FileMetaData*>& inputs1,
+                 const std::vector<FileMetaData*>& inputs2);
+
+  bool compute_hot_cold_range(const Slice& key, const std::pair<Slice, Slice>& hot_range, bool& is_hot);
+
+  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+
  private:
   class Builder;
 
@@ -313,6 +323,9 @@ class VersionSet {
   // Per-level key at which the next compaction at that level should start.
   // Either an empty string, or a valid InternalKey.
   std::string compact_pointer_[config::kNumLevels];
+
+  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+  std::vector<std::pair<Slice, Slice>> overlap_ranges;
 };
 
 // A Compaction encapsulates information about a compaction.
@@ -357,6 +370,10 @@ class Compaction {
   // is successful.
   void ReleaseInputs();
 
+  //  ~~~~~~~~~~~~~~~~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~~~~~~~~~~~~~~~~
+  int get_compaction_type();
+
+
  private:
   friend class Version;
   friend class VersionSet;
@@ -386,6 +403,16 @@ class Compaction {
   // higher level than the ones involved in this compaction (i.e. for
   // all L >= level_ + 2).
   size_t level_ptrs_[config::kNumLevels];
+
+  //  ~~~~~~~~~~~~~~~~~~~~~~ WZZ's Compaction Type Recording ~~~~~~~~~~~~~~~~~~~~~~
+  //record compaction type
+  // - 0 ==> Manual Compaction: This type is triggered by direct user action. It's not automatic and requires explicit command to run.
+  // - 1 ==> Size Compaction: This is the standard, automated compaction triggered when the total size of SSTables at a certain level exceeds our predetermined threshold.
+  // - 2 ==> Seek Compaction: Triggered when a file has been seeked too many times. It's an optimization to reduce read latency.
+  // - 3 ==> Trivial Move: A lightweight operation where a file can simply be moved to the next level without merging or splitting, significantly reducing compaction overhead.
+  // - 4 ==> None compaction
+  int compaction_type;
+
 };
 
 }  // namespace leveldb

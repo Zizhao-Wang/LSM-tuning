@@ -75,6 +75,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/leveldb.dir/util/options.cc.o.d"
   "CMakeFiles/leveldb.dir/util/status.cc.o"
   "CMakeFiles/leveldb.dir/util/status.cc.o.d"
+  "CMakeFiles/leveldb.dir/util/trace.cc.o"
+  "CMakeFiles/leveldb.dir/util/trace.cc.o.d"
   "libleveldb.a"
   "libleveldb.pdb"
 )

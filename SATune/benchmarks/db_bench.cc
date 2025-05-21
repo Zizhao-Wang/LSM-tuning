@@ -5,8 +5,13 @@
 #include <sys/types.h>
 
 #include <atomic>
-#include <cstdio>
-#include <cstdlib>
+#include <stdio.h>
+#include <stdlib.h>
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <vector>
 
 #include "leveldb/cache.h"
 #include "leveldb/comparator.h"
@@ -19,7 +24,14 @@
 #include "util/histogram.h"
 #include "util/mutexlock.h"
 #include "util/random.h"
+#include "util/trace.h"
 #include "util/testutil.h"
+#include "gflags/gflags.h"
+
+
+using GFLAGS_NAMESPACE::ParseCommandLineFlags;
+using GFLAGS_NAMESPACE::RegisterFlagValidator;
+using GFLAGS_NAMESPACE::SetUsageMessage;
 
 // Comma-separated list of operations to run in the specified order
 //   Actual benchmarks:
@@ -44,7 +56,30 @@
 //      stats       -- Print DB stats
 //      sstables    -- Print sstable info
 //      heapprofile -- Dump a heap profile (if supported by this port)
-static const char* FLAGS_benchmarks =
+
+// static const char* FLAGS_benchmarks =
+//     "fillseq,"
+//     "fillsync,"
+//     "fillrandom,"
+//     "overwrite,"
+//     "readrandom,"
+//     "readrandom,"  // Extra run to allow previous compactions to quiesce
+//     "readseq,"
+//     "readreverse,"
+//     "compact,"
+//     "readrandom,"
+//     "readseq,"
+//     "readreverse,"
+//     "fill100K,"
+//     "crc32c,"
+//     "snappycomp,"
+//     "snappyuncomp,"
+//     "zstdcomp,"
+//     "zstduncomp,";
+
+
+DEFINE_string(
+    benchmarks,
     "fillseq,"
     "fillsync,"
     "fillrandom,"
@@ -62,72 +97,168 @@ static const char* FLAGS_benchmarks =
     "snappycomp,"
     "snappyuncomp,"
     "zstdcomp,"
-    "zstduncomp,";
+    "zstduncomp,"
+    , "");
+
+DEFINE_int32(key_prefix,0, "Common key prefix length.");
+
+// Use the data_file with the following name.
+// static const char* FLAGS_data_file = nullptr;
+DEFINE_string(data_file, "", "Use the db with the following name.");
+
+DEFINE_string(Read_data_file, "", "Use the db with the following name.");
+
+DEFINE_string(RangeRead_data_file, "", "Use the db with the following name.");
+
+DEFINE_string(YCSB_data_file, "", "Use the db with the following name.");
+
+DEFINE_int64(ycsb_num, 10000000, "Number of key/values to place in database");
+
+DEFINE_int64(No_hot_percentage, 0, "");
+
+DEFINE_int32(zstd_compression_level, 1, "ZSTD compression level to try out");
+
+DEFINE_string(mem_log_file,"", "log path");
 
 // Number of key/values to place in database
-static int FLAGS_num = 1000000;
+DEFINE_int64(num, 1000000, "Number of key/values to place in database");
+DEFINE_int64(range, 0, "key range space");
+
+DEFINE_int64(writes, -1, "Number of write");
+
+DEFINE_int32(prefix_length, 16,
+             "Prefix length to pass into NewFixedPrefixTransform");
 
 // Number of read operations to do.  If negative, do FLAGS_num reads.
-static int FLAGS_reads = -1;
+DEFINE_int64(reads, -1, "");
+
+DEFINE_int64(ycsb_ops_num, 1000000, "YCSB operations num");
+
+DEFINE_int64(range_query_length, -1, "range query length");
+
+// YCSB workload type
+static leveldb::YCSBLoadType FLAGS_ycsb_type = leveldb::kYCSB_A;
 
 // Number of concurrent threads to run.
-static int FLAGS_threads = 1;
+DEFINE_int32(threads, 1, "Number of concurrent threads to run.");
+DEFINE_int32(duration, 0, "Time in seconds for the random-ops tests to run."
+             " When 0 then num & reads determine the test duration");
 
 // Size of each value
-static int FLAGS_value_size = 100;
+DEFINE_int32(value_size, 100, "Size of each value");
+
+DEFINE_int32(read_write_ratio, 100, "read_write_ratio");
 
 // Arrange to generate values that shrink to this fraction of
 // their original size after compression
-static double FLAGS_compression_ratio = 0.5;
+DEFINE_double(compression_ratio, 0.5, "Arrange to generate values that shrink"
+              " to this fraction of their original size after compression");
 
 // Print histogram of operation timings
-static bool FLAGS_histogram = false;
-
-// Count the number of string comparisons performed
-static bool FLAGS_comparisons = false;
+DEFINE_bool(histogram, false, "Print histogram of operation timings");
+DEFINE_bool(print_wa, false, "Print write amplification every stats interval");
+DEFINE_bool(comparisons, false, "Count the number of string comparisons performed");
 
 // Number of bytes to buffer in memtable before compacting
 // (initialized to default value by "main")
-static int FLAGS_write_buffer_size = 0;
+DEFINE_int64(write_buffer_size, 1048576,
+             "Number of bytes to buffer in all memtables before compacting");
 
 // Number of bytes written to each file.
 // (initialized to default value by "main")
-static int FLAGS_max_file_size = 0;
+DEFINE_int64(max_file_size, 256 << 20, "");
 
 // Approximate size of user data packed per block (before compression.
 // (initialized to default value by "main")
-static int FLAGS_block_size = 0;
-
+DEFINE_int32(block_size, 4096,  "");
 // Number of bytes to use as a cache of uncompressed data.
 // Negative means use default settings.
-static int FLAGS_cache_size = -1;
-
+DEFINE_int64(cache_size, 8 << 20, "");
 // Maximum number of files to keep open at the same time (use default if == 0)
-static int FLAGS_open_files = 0;
+DEFINE_int32(open_files, 0,
+             "Maximum number of files to keep open at the same time"
+             " (use default if == 0)");
 
 // Bloom filter bits per key.
 // Negative means use default settings.
-static int FLAGS_bloom_bits = -1;
-
-// Common key prefix length.
-static int FLAGS_key_prefix = 0;
+DEFINE_int32(bloom_bits, 10, "");
 
 // If true, do not destroy the existing database.  If you set this
 // flag and also specify a benchmark that wants a fresh database, that
 // benchmark will fail.
-static bool FLAGS_use_existing_db = false;
+DEFINE_bool(use_existing_db, false, "");
 
 // If true, reuse existing log/MANIFEST files when re-opening a database.
-static bool FLAGS_reuse_logs = false;
+DEFINE_bool(reuse_logs, false, "");
 
-// If true, use compression.
-static bool FLAGS_compression = true;
+// parameters of zipf distribution
+DEFINE_double(zipf_dis, 1.01, "");
 
+DEFINE_int32(seek_nexts, 50,
+             "How many times to call Next() after Seek() in "
+             "RangeQuery");
+             
 // Use the db with the following name.
-static const char* FLAGS_db = nullptr;
+// static const char* FLAGS_db = nullptr;
+DEFINE_string(db, "", "Use the db with the following name.");
 
-// ZSTD compression level to try out
-static int FLAGS_zstd_compression_level = 1;
+DEFINE_string(hot_file, "", "file for storing hot keys.");
+
+DEFINE_string(compactiontriggered_file, "", "file for storing hot keys.");
+
+DEFINE_string(percentages, "", "percentages to define hot keys.");
+
+DEFINE_string(logpath, "", "");
+
+DEFINE_int64(partition, 2000, "");
+
+DEFINE_bool(compression, true, "");
+
+DEFINE_bool(hugepage, false, "");
+
+DEFINE_int64(stats_interval, 1000000, "");
+
+DEFINE_bool(log, true, "");
+
+DEFINE_int32(low_pool, 2, "");
+DEFINE_int32(high_pool, 1, "");
+
+DEFINE_int32(log_buffer_size, 65536, "");
+
+DEFINE_int64(batch_size, 1, "Batch size");
+
+DEFINE_bool(mem_append, false, "mem table use append mode");
+DEFINE_bool(direct_io, false, "enable direct io");
+DEFINE_bool(no_close, false, "close file after pwrite");
+DEFINE_bool(skiplistrep, true, "use skiplist as memtable");
+DEFINE_bool(log_dio, true, "log use direct io");
+DEFINE_bool(bg_cancel, false, "allow bg compaction to be canceled");
+
+DEFINE_int32(io_record_pid, 0, "");
+DEFINE_int32(rwdelay, 10, "delay in us");
+DEFINE_int32(sleep, 100, "sleep for write in readwhilewriting2");
+DEFINE_int64(report_interval, 20, "report time interval");
+
+// ----------------------------------------------------------------
+// The following FLAGS are dedicated to tuning Compaction behavior:
+//   compaction_trigger                - L0 file count threshold to trigger L0→L1 compaction
+//   slowdown_writes_trigger           - L0 file count threshold to slow down write threads
+//   stop_writes_trigger               - L0 file count threshold to refuse new writes
+//   file_size_generated_in_compaction - Target file size (in bytes) produced per compaction
+// ----------------------------------------------------------------
+DEFINE_int32(compaction_trigger, 4,
+             "When #L0 files > this, trigger L0->L1 compaction");
+DEFINE_int32(slowdown_writes_trigger, 12,
+             "When #L0 files >= this, sleep write threads");
+DEFINE_int32(stop_writes_trigger, 20,
+             "When #L0 files >= this, refuse writes");
+DEFINE_int64(file_size_generated_in_compaction,
+             64LL * 1024 * 1024,
+             "Target file size (bytes) generated per compaction");
+// ================================================================
+// The above FLAGS are specific to the Compaction module and should not be modified or reused for other logic.
+// ================================================================
+
 
 namespace leveldb {
 
@@ -184,6 +315,9 @@ class RandomGenerator {
   }
 
   Slice Generate(size_t len) {
+    if(len>data_.size()){
+      len = data_.size()-1;
+    }
     if (pos_ + len > data_.size()) {
       pos_ = 0;
       assert(len < data_.size());
@@ -191,6 +325,18 @@ class RandomGenerator {
     pos_ += len;
     return Slice(data_.data() + pos_ - len, len);
   }
+
+  // Slice Generate(size_t len) {
+  //   if (len > data_.size()) {
+  //       len = data_.size(); 
+  //   }
+  //   if (pos_ + len > data_.size()) {
+  //       pos_ = 0; 
+  //   }
+  //   pos_ += len;
+  //   return Slice(data_.data() + pos_ - len, len);
+  // }
+
 };
 
 class KeyBuffer {
@@ -212,6 +358,38 @@ class KeyBuffer {
  private:
   char buffer_[1024];
 };
+
+class variable_Buffer{
+ public:
+  variable_Buffer() {
+    assert(FLAGS_key_prefix < sizeof(buffer_));
+    memset(buffer_, 'a', FLAGS_key_prefix);
+    this->key_sizes = 16;
+  }
+  variable_Buffer& operator=(variable_Buffer& other) = delete;
+  variable_Buffer(variable_Buffer& other) = delete;
+
+  void Set(uint64_t k,int key_size=16) {
+    // std::snprintf(buffer_ + FLAGS_key_prefix, sizeof(buffer_) - FLAGS_key_prefix, "%016d", k);
+    assert(key_size <= sizeof(buffer_) - FLAGS_key_prefix);
+    char format[20];
+    std::snprintf(format, sizeof(format), "%%0%dllu", key_size);
+    std::snprintf(buffer_ + FLAGS_key_prefix, sizeof(buffer_) - FLAGS_key_prefix, format, (unsigned long long)k);
+    this->key_sizes = key_size;
+  }
+
+  void PrintBuffer() const {
+    std::cout.write(buffer_, FLAGS_key_prefix + key_sizes);
+    std::cout << std::endl;
+  }
+
+  Slice slice() const { return Slice(buffer_, FLAGS_key_prefix + this->key_sizes); }
+
+ private:
+  char buffer_[1024];
+  int key_sizes;
+};
+
 
 #if defined(__linux)
 static Slice TrimSpace(Slice s) {
@@ -235,29 +413,217 @@ static void AppendWithSpace(std::string* str, Slice msg) {
   str->append(msg.data(), msg.size());
 }
 
+// class Stats {
+//  private:
+//   double start_;
+//   double finish_;
+//   double seconds_;
+//   uint64_t done_;
+//   int next_report_;
+//   int64_t bytes_;
+//   double last_op_finish_;
+//   uint64_t last_report_finish_;
+//   Histogram hist_;
+//   std::string message_;
+
+//  public:
+//   Stats() { Start(); }
+
+//   void Start() {
+//     next_report_ = 100;
+//     hist_.Clear();
+//     done_ = 0;
+//     bytes_ = 0;
+//     seconds_ = 0;
+//     message_.clear();
+//     start_ = finish_ = last_op_finish_ = g_env->NowMicros();
+//   }
+
+//   void Merge(const Stats& other) {
+//     hist_.Merge(other.hist_);
+//     done_ += other.done_;
+//     bytes_ += other.bytes_;
+//     seconds_ += other.seconds_;
+//     if (other.start_ < start_) start_ = other.start_;
+//     if (other.finish_ > finish_) finish_ = other.finish_;
+
+//     // Just keep the messages from one thread
+//     if (message_.empty()) message_ = other.message_;
+//   }
+
+//   void Stop() {
+//     finish_ = g_env->NowMicros();
+//     seconds_ = (finish_ - start_) * 1e-6;
+//   }
+
+//   void AddMessage(Slice msg) { AppendWithSpace(&message_, msg); }
+
+//   void PrintSpeed() {
+
+//     uint64_t now = Env::Default()->NowMicros();
+//     int64_t usecs_since_last = now - last_report_finish_;
+
+//     std::string cur_time = Env::Default()->TimeToString(now/1000000);
+//     fprintf(stdout,
+//             "%s ... thread %d: (%llu,%llu) ops and "
+//             "(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
+//             cur_time.c_str(), 
+//             id_,
+//             done_ - last_report_done_, done_,
+//             (done_ - last_report_done_) /
+//             (usecs_since_last / 1000000.0),
+//             done_ / ((now - start_) / 1000000.0),
+//             (now - last_report_finish_) / 1000000.0,
+//             (now - start_) / 1000000.0);
+//     last_report_finish_ = now;
+//     last_report_done_ = done_;
+
+//     // std::string io_res = GetStdoutFromCommand("echo q| htop -u hanson | aha --line-fix | html2text -width 999 | grep -v 'F1Help' | grep -v 'xml version=' | grep kv_bench ");
+//     // Log(io_log, " --- %s\n%s", cur_time.c_str(), io_res.c_str());
+//     fflush(stdout);
+//   }
+
+//   void FinishedSingleOp() {
+//     if (FLAGS_histogram) {
+//       double now = g_env->NowMicros();
+//       double micros = now - last_op_finish_;
+//       hist_.Add(micros);
+//       if (micros > 20000) {
+//         std::fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
+//         std::fflush(stderr);
+//       }
+//       last_op_finish_ = now;
+//     }
+
+//     done_++;
+//     if (done_ >= next_report_) {
+//       if (next_report_ < 1000)
+//         next_report_ += 100;
+//       else if (next_report_ < 5000)
+//         next_report_ += 500;
+//       else if (next_report_ < 10000)
+//         next_report_ += 1000;
+//       else if (next_report_ < 50000)
+//         next_report_ += 5000;
+//       else if (next_report_ < 100000)
+//         next_report_ += 10000;
+//       else if (next_report_ < 500000)
+//         next_report_ += 50000;
+//       else
+//         next_report_ += 100000;
+
+//       if((FLAGS_stats_interval != -1) && done_ % FLAGS_stats_interval == 0) {
+//         PrintSpeed(); 
+//           std::string stats;
+//           if (!db->GetProperty("leveldb.stats", &stats)) {
+//             stats = "(failed)";
+//           }
+//           fprintf(stdout, "\n%s\n", stats.c_str());
+//       }
+      
+
+//       std::fprintf(stderr, "... finished %lu ops%30s\r", done_, "");
+//       std::fflush(stderr);
+//     }
+//   }
+
+//   void AddBytes(int64_t n) { bytes_ += n; }
+
+//   void Report(const Slice& name) {
+//     // Pretend at least one op was done in case we are running a benchmark
+//     // that does not call FinishedSingleOp().
+//     if (done_ < 1) done_ = 1;
+
+//     std::string extra;
+//     if (bytes_ > 0) {
+//       // Rate is computed on actual elapsed time, not the sum of per-thread
+//       // elapsed times.
+//       double elapsed = (finish_ - start_) * 1e-6;
+//       char rate[100];
+//       std::snprintf(rate, sizeof(rate), "%6.1f MB/s",
+//                     (bytes_ / 1048576.0) / elapsed);
+//       extra = rate;
+//     }
+//     AppendWithSpace(&extra, message_);
+
+//     std::fprintf(stdout, "%-12s : %11.3f micros/op;%s%s\n",
+//                  name.ToString().c_str(), seconds_ * 1e6 / done_,
+//                  (extra.empty() ? "" : " "), extra.c_str());
+//     std::fprintf(stdout, "%lu operations have been finished (%.3f MB data have been written into db)\n", done_, bytes_/1048576.0);
+//     if (FLAGS_histogram) {
+//       std::fprintf(stdout, "Microseconds per op:\n%s\n",
+//                    hist_.ToString().c_str());
+//     }
+//     std::fflush(stdout);
+//   }
+// };
+
+// // State shared by all concurrent executions of the same benchmark.
+// struct SharedState {
+//   port::Mutex mu;
+//   port::CondVar cv GUARDED_BY(mu);
+//   int total GUARDED_BY(mu);
+
+//   // Each thread goes through the following states:
+//   //    (1) initializing
+//   //    (2) waiting for others to be initialized
+//   //    (3) running
+//   //    (4) done
+
+//   int num_initialized GUARDED_BY(mu);
+//   int num_done GUARDED_BY(mu);
+//   bool start GUARDED_BY(mu);
+
+//   SharedState(int total)
+//       : cv(&mu), total(total), num_initialized(0), num_done(0), start(false) {}
+// };
+
+// // Per-thread state for concurrent executions of the same benchmark.
+// struct ThreadState {
+//   int tid;      // 0..n-1 when running in n threads
+//   Random rand;  // Has different seeds for different threads
+//   Stats stats;
+//   SharedState* shared;
+
+//   ThreadState(int index, int seed) : tid(index), rand(seed), shared(nullptr) {}
+// };
+
 class Stats {
- private:
+ public:
+  int id_;
   double start_;
   double finish_;
   double seconds_;
-  int done_;
-  int next_report_;
-  int64_t bytes_;
+  uint64_t done_;
+  uint64_t last_report_done_;
+  uint64_t last_report_finish_;
+  uint64_t next_report_;
+  double next_report_time_;
+  int64_t   bytes_;
+  int call_ref;
+  uint64_t real_ops;
   double last_op_finish_;
   Histogram hist_;
   std::string message_;
 
  public:
   Stats() { Start(); }
-
+  Stats(int id) { id_ = id; Start(); }
   void Start() {
+    start_ = g_env->NowMicros();
+    next_report_time_ = start_;
     next_report_ = 100;
+    last_op_finish_ = start_;
+    last_report_done_ = 0;
+    last_report_finish_ = start_;
     hist_.Clear();
     done_ = 0;
+    real_ops = 0;
     bytes_ = 0;
+    call_ref = 0;
     seconds_ = 0;
+    finish_ = start_;
     message_.clear();
-    start_ = finish_ = last_op_finish_ = g_env->NowMicros();
   }
 
   void Merge(const Stats& other) {
@@ -277,42 +643,192 @@ class Stats {
     seconds_ = (finish_ - start_) * 1e-6;
   }
 
-  void AddMessage(Slice msg) { AppendWithSpace(&message_, msg); }
+  void AddMessage(Slice msg) {
+    AppendWithSpace(&message_, msg);
+  }
 
-  void FinishedSingleOp() {
+  std::string getCurrentTime() {
+    char timeStr[100];
+    time_t now = time(NULL);
+    strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", localtime(&now));
+    return std::string(timeStr);
+  } 
+
+  void PrintSpeed() {
+
+    uint64_t now = Env::Default()->NowMicros();
+    int64_t usecs_since_last = now - last_report_finish_;
+
+    // std::string cur_time = Env::Default()->TimeToString(now/1000000);
+    fprintf(stdout,
+            "%s ... thread %d: (%lu,%lu) ops and "
+            "(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
+            getCurrentTime().c_str(), 
+            id_,
+            done_ - last_report_done_, done_,
+            (done_ - last_report_done_) /
+            (usecs_since_last / 1000000.0),
+            done_ / ((now - start_) / 1000000.0),
+            (now - last_report_finish_) / 1000000.0,
+            (now - start_) / 1000000.0);
+    last_report_finish_ = now;
+    last_report_done_ = done_;
+
+    // std::string io_res = GetStdoutFromCommand("echo q| htop -u hanson | aha --line-fix | html2text -width 999 | grep -v 'F1Help' | grep -v 'xml version=' | grep kv_bench ");
+    // Log(io_log, " --- %s\n%s", cur_time.c_str(), io_res.c_str());
+    fflush(stdout);
+  }
+
+  std::string format_memory(unsigned long bytes) {
+    const double GIGABYTE = 1024.0 * 1024.0 * 1024.0;
+    const double MEGABYTE = 1024.0 * 1024.0;
+    std::ostringstream oss;
+
+    if (bytes >= GIGABYTE) {
+        oss << std::fixed << std::setprecision(2) << (bytes / GIGABYTE) << " GB";
+    } else {
+        oss << std::fixed << std::setprecision(2) << (bytes / MEGABYTE) << " MB";
+    }
+
+    return oss.str();
+  }
+
+  void print_mem_usage() {
+
+    std::ofstream log_file;
+    if (call_ref == 0) {
+      // 如果call_ref为0，清空文件并从头开始写
+      log_file.open(FLAGS_mem_log_file, std::ios::trunc);
+    } else {
+      // 如果call_ref不为0，以追加模式打开文件
+      log_file.open(FLAGS_mem_log_file, std::ios::app);
+    }
+
+    if (!log_file.is_open()) {
+      fprintf(stderr, "Failed to open the mem_log file: %s.\n",FLAGS_mem_log_file.c_str());  
+      return ;
+    }
+    
+    std::ifstream statm("/proc/self/statm");
+    if (!statm) {
+      fprintf(stderr, "Failed to open /proc/self/statm.\n");
+      return;
+    }
+    unsigned long size, resident, shr_size;
+    if (!(statm >> size >> resident >> shr_size)) {
+      fprintf(stderr, "Failed to read memory usage from /proc/self/statm.\n");
+      return;
+    }
+    long page_size = sysconf(_SC_PAGESIZE); // 页面大小，字节
+
+    // 使用ostream的插入操作符来写入信息
+    log_file << getCurrentTime() << " ... thread " << id_ << ": (" << (done_ - last_report_done_) << "," << done_ << ") ops have been finished!\n";
+    log_file << "virtual memory used: " << format_memory(size * page_size) << ", "
+             << "Resident set size: " << format_memory(resident * page_size) << ", "
+             << "Shared Memory Usage: " << format_memory(shr_size * page_size) << " \n\n";    
+    
+    call_ref++;
+  }
+
+  void FinishedSingleOp2(DB* db = nullptr) {
     if (FLAGS_histogram) {
       double now = g_env->NowMicros();
       double micros = now - last_op_finish_;
       hist_.Add(micros);
       if (micros > 20000) {
-        std::fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
-        std::fflush(stderr);
+        fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
+        fflush(stderr);
       }
       last_op_finish_ = now;
     }
 
     done_++;
     if (done_ >= next_report_) {
-      if (next_report_ < 1000)
-        next_report_ += 100;
-      else if (next_report_ < 5000)
-        next_report_ += 500;
-      else if (next_report_ < 10000)
-        next_report_ += 1000;
-      else if (next_report_ < 50000)
-        next_report_ += 5000;
-      else if (next_report_ < 100000)
-        next_report_ += 10000;
-      else if (next_report_ < 500000)
-        next_report_ += 50000;
-      else
-        next_report_ += 100000;
-      std::fprintf(stderr, "... finished %d ops%30s\r", done_, "");
-      std::fflush(stderr);
+      if      (next_report_ < 1000)   next_report_ += 100;
+      else if (next_report_ < 5000)   next_report_ += 500;
+      else if (next_report_ < 10000)  next_report_ += 1000;
+      else if (next_report_ < 50000)  next_report_ += 5000;
+      else if (next_report_ < 100000) next_report_ += 10000;
+      else if (next_report_ < 500000) next_report_ += 50000;
+      else                            next_report_ += 100000;
+      // fprintf(stderr, "... finished %llu ops%30s\r", (unsigned long long)done_, "");
+      // fflush(stderr);
+    }
+
+    if (g_env->NowMicros() > next_report_time_) {
+        PrintSpeed(); 
+        print_mem_usage();
+        next_report_time_ += FLAGS_report_interval * 1000000;
+        if (FLAGS_print_wa && db) {
+          std::string stats;
+          if (!db->GetProperty("leveldb.stats", &stats)) {
+            stats = "(failed)";
+          }
+          fprintf(stdout, "\n%s\n", stats.c_str());
+          fflush(stdout);
+        }
     }
   }
 
-  void AddBytes(int64_t n) { bytes_ += n; }
+  void FinishedSingleOp(DB* db = nullptr) {
+    if (FLAGS_histogram) {
+      double now = g_env->NowMicros();
+      double micros = now - last_op_finish_;
+      hist_.Add(micros);
+      if (micros > 200000000) {
+        fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
+        fflush(stderr);
+      }
+      last_op_finish_ = now;
+    }
+
+    done_++;
+    if (done_ >= next_report_) {
+      if      (next_report_ < 1000)   next_report_ += 100;
+      else if (next_report_ < 5000)   next_report_ += 500;
+      else if (next_report_ < 10000)  next_report_ += 1000;
+      else if (next_report_ < 50000)  next_report_ += 5000;
+      else if (next_report_ < 100000) next_report_ += 10000;
+      else if (next_report_ < 500000) next_report_ += 50000;
+      else                            next_report_ += 100000;
+
+      // if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
+      //   PrintSpeed(); 
+      //   if (FLAGS_print_wa && db) {
+      //     std::string stats;
+      //     if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
+      //       stats = "(failed)";
+      //     }
+      //     fprintf(stdout, "%s\n", stats.c_str());
+      //     fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
+      //     fflush(stdout);
+      //   }
+      // }
+      fprintf(stderr, "... finished %llu ops%30s\r", (unsigned long long)done_, "");
+      fflush(stderr);
+    }
+  }
+
+  void AddBytes(int64_t n) {
+    bytes_ += n;
+  }
+
+  void Addops(DB* db = nullptr) {
+    real_ops++;
+    if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
+      PrintSpeed(); 
+      print_mem_usage();
+      if (FLAGS_print_wa && db) {
+        std::string stats;
+        if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
+          stats = "(failed)";
+        }
+        fprintf(stdout, "%s\n", stats.c_str());
+        fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
+        fflush(stdout);
+      }
+    }
+  }
 
   void Report(const Slice& name) {
     // Pretend at least one op was done in case we are running a benchmark
@@ -320,25 +836,30 @@ class Stats {
     if (done_ < 1) done_ = 1;
 
     std::string extra;
+    double elapsed = (finish_ - start_) * 1e-6;
     if (bytes_ > 0) {
       // Rate is computed on actual elapsed time, not the sum of per-thread
       // elapsed times.
-      double elapsed = (finish_ - start_) * 1e-6;
+      
       char rate[100];
-      std::snprintf(rate, sizeof(rate), "%6.1f MB/s",
-                    (bytes_ / 1048576.0) / elapsed);
+      snprintf(rate, sizeof(rate), "%6.1f MB/s",
+               (bytes_ / 1048576.0) / elapsed);
       extra = rate;
     }
     AppendWithSpace(&extra, message_);
 
-    std::fprintf(stdout, "%-12s : %11.3f micros/op;%s%s\n",
-                 name.ToString().c_str(), seconds_ * 1e6 / done_,
-                 (extra.empty() ? "" : " "), extra.c_str());
+    double throughput = (double)done_/elapsed;
+    std::fprintf(stdout, "%lu operations have been finished (%.3f MB data have been written into db)\n", done_, bytes_/1048576.0);
+    fprintf(stdout, "%-12s : %11.3f micros/op %ld ops/sec;%s%s\n",
+            name.ToString().c_str(),
+            elapsed * 1e6 / done_,
+            (long)throughput,
+            (extra.empty() ? "" : " "),
+            extra.c_str());
     if (FLAGS_histogram) {
-      std::fprintf(stdout, "Microseconds per op:\n%s\n",
-                   hist_.ToString().c_str());
+      fprintf(stdout, "Microseconds per op:\n%s\n", hist_.ToString().c_str());
     }
-    std::fflush(stdout);
+    fflush(stdout);
   }
 };
 
@@ -359,18 +880,27 @@ struct SharedState {
   bool start GUARDED_BY(mu);
 
   SharedState(int total)
-      : cv(&mu), total(total), num_initialized(0), num_done(0), start(false) {}
+      : cv(&mu), total(total), num_initialized(0), num_done(0), start(false) { }
 };
 
 // Per-thread state for concurrent executions of the same benchmark.
 struct ThreadState {
-  int tid;      // 0..n-1 when running in n threads
-  Random rand;  // Has different seeds for different threads
+  int tid;             // 0..n-1 when running in n threads
+  Random rand;         // Has different seeds for different threads
   Stats stats;
   SharedState* shared;
-
-  ThreadState(int index, int seed) : tid(index), rand(seed), shared(nullptr) {}
+  Trace* trace;
+  Trace* read_trace;
+  RandomGenerator gen;
+  ThreadState(int index)
+      : tid(index),
+        rand(1000 + index),
+        stats(index) {
+        trace = new TraceUniform(1000 + index * 345);
+        read_trace = new TraceZipfian(1000 + index * 345);
+  }
 };
+
 
 void Compress(
     ThreadState* thread, std::string name,
@@ -430,7 +960,7 @@ class Benchmark {
   Cache* cache_;
   const FilterPolicy* filter_policy_;
   DB* db_;
-  int num_;
+  int64_t num_;
   int value_size_;
   int entries_per_batch_;
   WriteOptions write_options_;
@@ -447,7 +977,7 @@ class Benchmark {
         stdout, "Values:     %d bytes each (%d bytes after compression)\n",
         FLAGS_value_size,
         static_cast<int>(FLAGS_value_size * FLAGS_compression_ratio + 0.5));
-    std::fprintf(stdout, "Entries:    %d\n", num_);
+    std::fprintf(stdout, "Entries:    %ld\n", num_);
     std::fprintf(stdout, "RawSize:    %.1f MB (estimated)\n",
                  ((static_cast<int64_t>(kKeySize + FLAGS_value_size) * num_) /
                   1048576.0));
@@ -456,6 +986,16 @@ class Benchmark {
         (((kKeySize + FLAGS_value_size * FLAGS_compression_ratio) * num_) /
          1048576.0));
     PrintWarnings();
+    std::fprintf(stdout, "some command parameters have been selected:\n");
+    std::fprintf(stdout, "  threads: %d\n", FLAGS_threads);
+    std::fprintf(stdout, "  duration: %d\n", FLAGS_duration);
+    std::fprintf(stdout, "  print_wa: %d\n", FLAGS_print_wa);
+    std::fprintf(stdout, "  num_entries: %ld\n",FLAGS_num);
+    std::fprintf(stdout, "  bechmark selected %s\n",FLAGS_benchmarks.c_str());
+    std::fprintf(stdout, "  hot_file_path: %s\n", FLAGS_hot_file.c_str());
+    std::fprintf(stdout, "  Hot_data_triggered_compaction_file_path: %s\n", FLAGS_compactiontriggered_file.c_str());
+    std::fprintf(stdout, "  data_file_path: %s\n", FLAGS_data_file.c_str());
+    std::fprintf(stdout, "  percentages: %s\n", FLAGS_percentages.c_str());
     std::fprintf(stdout, "------------------------------------------------\n");
   }
 
@@ -551,9 +1091,11 @@ class Benchmark {
 
   void Run() {
     PrintHeader();
+    // std::fprintf(stderr,"open dbs in Run()\n");
+    // fflush(stderr);
     Open();
 
-    const char* benchmarks = FLAGS_benchmarks;
+    const char* benchmarks = FLAGS_benchmarks.c_str();
     while (benchmarks != nullptr) {
       const char* sep = strchr(benchmarks, ',');
       Slice name;
@@ -571,6 +1113,8 @@ class Benchmark {
       value_size_ = FLAGS_value_size;
       entries_per_batch_ = 1;
       write_options_ = WriteOptions();
+      // fprintf(stdout, "num_ = %ld in Run()", num_);
+      // fflush(stdout);
 
       void (Benchmark::*method)(ThreadState*) = nullptr;
       bool fresh_db = false;
@@ -590,7 +1134,19 @@ class Benchmark {
       } else if (name == Slice("fillrandom")) {
         fresh_db = true;
         method = &Benchmark::WriteRandom;
-      } else if (name == Slice("overwrite")) {
+      } else if (name == Slice("fillzipf")) {
+        fresh_db = true;
+        method = &Benchmark::WriteZipf;
+      } else if (name == Slice("fillzipf2")) {
+        fresh_db = true;
+        method = &Benchmark::WriteZipf2;
+      } else if (name == Slice("filltwitter")) {
+        fresh_db = true;
+        method = &Benchmark::Writecluster;
+      } else if (name == Slice("filletc")) {
+        fresh_db = true;
+        method = &Benchmark::WriteRandom_from_file;
+      }else if (name == Slice("overwrite")) {
         fresh_db = false;
         method = &Benchmark::WriteRandom;
       } else if (name == Slice("fillsync")) {
@@ -609,6 +1165,8 @@ class Benchmark {
         method = &Benchmark::ReadReverse;
       } else if (name == Slice("readrandom")) {
         method = &Benchmark::ReadRandom;
+      } else if (name == Slice("readrange")) {
+        method = &Benchmark::range_query_read;
       } else if (name == Slice("readmissing")) {
         method = &Benchmark::ReadMissing;
       } else if (name == Slice("seekrandom")) {
@@ -641,6 +1199,26 @@ class Benchmark {
         method = &Benchmark::ZstdUncompress;
       } else if (name == Slice("heapprofile")) {
         HeapProfile();
+      } else if (name == Slice("ycsba")) {
+        FLAGS_ycsb_type = kYCSB_A;
+        method = &Benchmark::YCSB_A;
+      } else if (name == Slice("ycsbb")) {
+        FLAGS_ycsb_type = kYCSB_B;
+        method = &Benchmark::YCSB_A;
+      } else if (name == Slice("ycsbc")) {
+        FLAGS_ycsb_type = kYCSB_C;
+        method = &Benchmark::YCSB_A;
+      } else if (name == Slice("ycsbd")) {
+        FLAGS_ycsb_type = kYCSB_D;
+        method = &Benchmark::YCSB_A;
+      } else if (name == Slice("ycsbe")) {
+        FLAGS_ycsb_type = kYCSB_E;
+        method = &Benchmark::YCSB_E;
+      } else if (name == Slice("ycsbf")) {
+        FLAGS_ycsb_type = kYCSB_F;
+        method = &Benchmark::YCSB_F;
+      } else if (name == Slice("twitterexecute")) {
+        method = &Benchmark::twitter_traces_execute; 
       } else if (name == Slice("stats")) {
         PrintStats("leveldb.stats");
       } else if (name == Slice("sstables")) {
@@ -658,9 +1236,11 @@ class Benchmark {
                        name.ToString().c_str());
           method = nullptr;
         } else {
-          delete db_;
+          delete db_; 
           db_ = nullptr;
           DestroyDB(FLAGS_db, Options());
+          fprintf(stderr, "open dbs:in fresh_db()\n");
+          fflush(stderr);
           Open();
         }
       }
@@ -716,13 +1296,15 @@ class Benchmark {
       arg[i].bm = this;
       arg[i].method = method;
       arg[i].shared = &shared;
-      ++total_thread_count_;
+
+      // ++total_thread_count_;
       // Seed the thread's random state deterministically based upon thread
       // creation across all benchmarks. This ensures that the seeds are unique
       // but reproducible when rerunning the same set of benchmarks.
-      arg[i].thread = new ThreadState(i, /*seed=*/1000 + total_thread_count_);
+      arg[i].thread = new ThreadState(i);
       arg[i].thread->shared = &shared;
       g_env->StartThread(ThreadBody, &arg[i]);
+
     }
 
     shared.mu.Lock();
@@ -816,6 +1398,13 @@ class Benchmark {
     options.reuse_logs = FLAGS_reuse_logs;
     options.compression =
         FLAGS_compression ? kSnappyCompression : kNoCompression;
+    
+    options.hot_file_path = FLAGS_hot_file;
+    options.compactiontriggered_output_file = FLAGS_compactiontriggered_file;
+    options.percentages = FLAGS_percentages;
+
+    std::fprintf(stderr, "open dbs:in Open()\n");
+    fflush(stderr);
     Status s = DB::Open(options, FLAGS_db, &db_);
     if (!s.ok()) {
       std::fprintf(stderr, "open error: %s\n", s.ToString().c_str());
@@ -826,6 +1415,8 @@ class Benchmark {
   void OpenBench(ThreadState* thread) {
     for (int i = 0; i < num_; i++) {
       delete db_;
+      fprintf(stderr, "open dbs:in OpenBench()\n");
+      fflush(stderr);
       Open();
       thread->stats.FinishedSingleOp();
     }
@@ -835,10 +1426,25 @@ class Benchmark {
 
   void WriteRandom(ThreadState* thread) { DoWrite(thread, false); }
 
+  void WriteZipf(ThreadState* thread) { DoWrite_zipf2(thread, false); }
+
+
+  void WriteZipf2(ThreadState* thread) { DoWrite_zipf3(thread, false); }
+
+  void Writecluster(ThreadState* thread) { DoWrite_twitter_cluster(thread, false); }
+
+  void WriteRandom_from_file(ThreadState* thread) {
+    DoWrite2(thread, false);
+  }
+
   void DoWrite(ThreadState* thread, bool seq) {
+    // fprintf(stdout, "DoWrite number: %ld\n",num_);
+    // fflush(stdout);
+    // exit(0);
+
     if (num_ != FLAGS_num) {
       char msg[100];
-      std::snprintf(msg, sizeof(msg), "(%d ops)", num_);
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
       thread->stats.AddMessage(msg);
     }
 
@@ -846,15 +1452,20 @@ class Benchmark {
     WriteBatch batch;
     Status s;
     int64_t bytes = 0;
-    KeyBuffer key;
-    for (int i = 0; i < num_; i += entries_per_batch_) {
+
+    for (int64_t i = 0; i < num_; i += entries_per_batch_) {
       batch.Clear();
-      for (int j = 0; j < entries_per_batch_; j++) {
-        const int k = seq ? i + j : thread->rand.Uniform(FLAGS_num);
-        key.Set(k);
-        batch.Put(key.slice(), gen.Generate(value_size_));
-        bytes += value_size_ + key.slice().size();
-        thread->stats.FinishedSingleOp();
+      for (int64_t j = 0; j < entries_per_batch_; j++) {
+        const int64_t k = seq ? i + j : (thread->trace->Next()% FLAGS_range);
+        char key[100];
+        snprintf(key, sizeof(key), "%016llu", (unsigned long long)k);
+        batch.Put(key, gen.Generate(value_size_));
+        bytes += value_size_ + strlen(key);
+        if(thread->stats.done_ % FLAGS_stats_interval == 0){
+          thread->stats.AddBytes(bytes);
+          bytes = 0;
+        }
+        thread->stats.FinishedSingleOp(db_);
       }
       s = db_->Write(write_options_, &batch);
       if (!s.ok()) {
@@ -863,6 +1474,771 @@ class Benchmark {
       }
     }
     thread->stats.AddBytes(bytes);
+  }
+
+  void DoWrite2(ThreadState* thread, bool seq) {
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    variable_Buffer key_buffer;
+
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    for (int i = 0; i < num_; i += entries_per_batch_) {
+      batch.Clear();
+      for (int j = 0; j < entries_per_batch_; j++) {
+
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        // const int k = seq ? i + j : thread->rand.Uniform(FLAGS_num);
+        if (!std::getline(csv_file, line)) { // 从文件中读取一行
+            fprintf(stderr, "Error reading key from file\n");
+            return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+            row_data.push_back(cell);
+        }
+        if (row_data.size() != 3) {
+            fprintf(stderr, "Invalid CSV row format\n");
+            continue;
+        }
+        const uint64_t k = std::stoull(row_data[0]); 
+        int key_size = std::stoi(row_data[1]);
+        // const int v = std::stoi(row_data[3]); 
+        int val_size = std::stoi(row_data[2]);
+        // std::cout << "k: " << k << ", key_size: " << key_size << ", v: " << v << ", val_size: " << val_size << std::endl;
+
+        key_buffer.Set(k, key_size);
+        // key_buffer.PrintBuffer();
+      
+        batch.Put(key_buffer.slice(), gen.Generate(val_size));
+
+        bytes += val_size + key_buffer.slice().size();
+        thread->stats.FinishedSingleOp(db_);
+      }
+      s = db_->Write(write_options_, &batch);
+      if (!s.ok()) {
+        std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+        std::exit(1);
+      }
+    }
+    thread->stats.AddBytes(bytes);
+  }
+
+  void DoWrite_zipf(ThreadState* thread, bool seq) {
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    for (int i = 0; i < num_; i += entries_per_batch_) {
+      batch.Clear();
+      for (int j = 0; j < entries_per_batch_; j++) {
+          line_stream.clear();
+          line_stream.str("");
+          row_data.clear();
+          // const int k = seq ? i + j : thread->rand.Uniform(FLAGS_num);
+          if (!std::getline(csv_file, line)) { // 从文件中读取一行
+              fprintf(stderr, "Error reading key from file\n");
+              return;
+          }
+          line_stream << line;
+          while (getline(line_stream, cell, ',')) {
+              row_data.push_back(cell);
+          }
+          if (row_data.size() != 1) {
+              fprintf(stderr, "Invalid CSV row format\n");
+              continue;
+          }
+          const uint64_t k = std::stoull(row_data[0]);
+          // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
+          char key[100];
+          snprintf(key, sizeof(key), "%016llu", (unsigned long long)k);
+          batch.Put(key, gen.Generate(value_size_));
+          bytes += value_size_ + strlen(key);
+          thread->stats.FinishedSingleOp(db_); 
+      }
+      s = db_->Write(write_options_, &batch);
+      if (!s.ok()) {
+        std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+        std::exit(1);
+      }
+    }
+    thread->stats.AddBytes(bytes);
+  }
+
+  void YCSB_A(ThreadState* thread) {
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+    variable_Buffer Read_Key;
+    ReadOptions options;
+    std::string value;
+    int found = 0;
+    int write_ops=0;
+    int read_ops=0;
+
+    std::ifstream csv_file(FLAGS_YCSB_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in YCSB_A\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    std::fprintf(stderr, "Processing %d entries in every Batch, FLAGS_ycsb_num = %lu\n", entries_per_batch_,FLAGS_ycsb_num);
+
+    for (uint64_t i = 0; i < FLAGS_ycsb_num; i += entries_per_batch_) {
+      batch.Clear();
+      for (uint64_t j = 0; j < entries_per_batch_; j++) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        // const int k = seq ? i + j : thread->rand.Uniform(FLAGS_num);
+        if (!std::getline(csv_file, line)) { // 从文件中读取一行
+          fprintf(stderr, "Error reading key from file in YCSB_A\n");
+          return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+        if (row_data.size() != 2) {
+          fprintf(stderr, "Invalid CSV row format\n");
+          continue;
+        }
+
+        if (!std::all_of(row_data[1].begin(), row_data[1].end(), ::isdigit)) {
+          fprintf(stderr, "Non-numeric key encountered: %s in line %ld \n", row_data[1].c_str(),i);
+          continue;
+        }
+
+        const uint64_t k = std::stoull(row_data[1]);
+
+        if (row_data[0]=="READ"){
+          // fprintf(stdout,"The key is %lu!\n",k);
+          Read_Key.Set(k);
+          if (db_->Get(options, Read_Key.slice(), &value).ok()) {
+            found++;
+          }
+          bytes = (16 + FLAGS_value_size);
+          thread->stats.AddBytes(bytes);
+          read_ops++;
+        }else if(row_data[0]=="INSERT" || row_data[0]=="UPDATE"){
+          // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
+          char key[100];
+          snprintf(key, sizeof(key), "%016llu", (unsigned long long)k);
+          s = db_->Put(write_options_, key, gen.Generate(value_size_));
+          if (!s.ok()) {
+            std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+            std::exit(1);
+          }
+          bytes += value_size_ + strlen(key);
+          if(thread->stats.done_ % FLAGS_stats_interval == 0){
+            thread->stats.AddBytes(bytes);
+            bytes = 0;
+          }
+          write_ops++; 
+        }else{
+          continue;
+        }
+        thread->stats.FinishedSingleOp();
+      }
+    }
+    fprintf(stdout,"There are %d write ops is executed and %d read ops are executed!\n", write_ops, read_ops);
+    thread->stats.AddBytes(bytes);
+  }
+
+  void YCSB_E(ThreadState* thread) {
+    fprintf(stderr,"Enter YCSB_E\n");
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+    variable_Buffer Read_Key;
+    ReadOptions options;
+    std::string value;
+    int found = 0;
+    int write_ops=0;
+    int scan_ops=0;
+    
+
+    int seek_lengthE=20;
+
+    std::ifstream csv_file(FLAGS_YCSB_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in YCSB_E\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    std::fprintf(stderr, "Processing %d entries in every Batch, FLAGS_ycsb_num = %lu\n", entries_per_batch_,FLAGS_ycsb_num);
+
+    for (uint64_t i = 0; i < FLAGS_ycsb_num; i += entries_per_batch_) {
+      batch.Clear();
+      for (uint64_t j = 0; j < entries_per_batch_; j++) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        // const int k = seq ? i + j : thread->rand.Uniform(FLAGS_num);
+        if (!std::getline(csv_file, line)) { // 从文件中读取一行
+          fprintf(stderr, "Error reading key from file in YCSB_E\n");
+          return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+        if (row_data.size() != 2) {
+          fprintf(stderr, "Invalid CSV row format\n");
+          continue;
+        }
+
+        if (!std::all_of(row_data[1].begin(), row_data[1].end(), ::isdigit)) {
+          fprintf(stderr, "Non-numeric key encountered: %s in line %ld \n", row_data[1].c_str(),i);
+          continue;
+        }
+
+        const uint64_t k = std::stoull(row_data[1]);
+
+        if (row_data[0]=="INSERT"){
+          char key[100];
+          snprintf(key, sizeof(key), "%016llu", (unsigned long long)(k));
+          s = db_->Put(write_options_, key, gen.Generate(value_size_));
+          if (!s.ok()) {
+            std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+            std::exit(1);
+          }
+          bytes += value_size_ + strlen(key);
+          write_ops++;
+        }else if(row_data[0]=="SCAN"){
+          Iterator* iter = db_->NewIterator(ReadOptions());
+          Read_Key.Set(k+2000000);
+          iter->Seek(Read_Key.slice());
+          if (iter->Valid() && iter->key() == Read_Key.slice()) found++;
+          while (seek_lengthE--){
+            // fprintf(stdout,"Searched Key is: %s \n", iter->key().data());
+            if(iter->Valid()){
+              iter->Next();
+            }
+          }
+          delete iter;
+          scan_ops++;
+        }else{}
+        thread->stats.AddBytes(bytes);
+        bytes = 0;
+        thread->stats.FinishedSingleOp();
+        seek_lengthE = 20;
+      }
+    }
+    fprintf(stdout,"There are %d write ops is executed and %d scan ops are executed!\n", write_ops, scan_ops);
+  }
+
+  void YCSB_F(ThreadState* thread) {
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+    variable_Buffer Read_Key;
+    ReadOptions options;
+    std::string value;
+    int found = 0;
+
+    std::ifstream csv_file(FLAGS_YCSB_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in YCSB_F\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    std::fprintf(stderr, "Processing %d entries in every Batch, FLAGS_ycsb_num = %lu\n", entries_per_batch_,FLAGS_ycsb_num);
+
+    for (uint64_t i = 0; i < FLAGS_ycsb_num; i += entries_per_batch_) {
+      batch.Clear();
+      for (uint64_t j = 0; j < entries_per_batch_; j++) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        // const int k = seq ? i + j : thread->rand.Uniform(FLAGS_num);
+        if (!std::getline(csv_file, line)) { // 从文件中读取一行
+          fprintf(stderr, "Error reading key from file in YCSB_F\n");
+          return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+        if (row_data.size() != 2) {
+          fprintf(stderr, "Invalid CSV row format\n");
+          continue;
+        }
+
+        if (!std::all_of(row_data[1].begin(), row_data[1].end(), ::isdigit)) {
+          fprintf(stderr, "Non-numeric key encountered: %s in line %ld \n", row_data[1].c_str(),i);
+          continue;
+        }
+
+        const uint64_t k = std::stoull(row_data[1]);
+
+        if (row_data[0]=="READ"){
+          // fprintf(stdout,"The key is %lu!\n",k);
+          Read_Key.Set(k);
+          if (db_->Get(options, Read_Key.slice(), &value).ok()) {
+            found++;
+          }
+          bytes = (16 + FLAGS_value_size);
+          thread->stats.AddBytes(bytes);
+        }else if(row_data[0]=="RMW"){
+          // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
+          Read_Key.Set(k);
+          if (db_->Get(options, Read_Key.slice(), &value).ok()) {
+            char key[100];
+            snprintf(key, sizeof(key), "%016llu", (unsigned long long)k);
+            s = db_->Put(write_options_, key, gen.Generate(value_size_));
+            if (!s.ok()) {
+              std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+              std::exit(1);
+            }
+            bytes += value_size_ + strlen(key);
+          }
+        }else{}
+        thread->stats.FinishedSingleOp();
+      }
+    }
+    thread->stats.AddBytes(bytes);
+  }
+
+  void twitter_traces_execute(ThreadState* thread) {
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+    variable_Buffer Read_Key;
+    ReadOptions options;
+    std::string value;
+    int found = 0;
+
+    std::ifstream csv_file(FLAGS_YCSB_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in twitter_traces_execute\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    std::fprintf(stderr, "Processing %d entries in every Batch, FLAGS_ycsb_num = %lu\n", entries_per_batch_,FLAGS_ycsb_num);
+
+    for (uint64_t i = 0; i < FLAGS_ycsb_num; i += entries_per_batch_) {
+      batch.Clear();
+      for (uint64_t j = 0; j < entries_per_batch_; j++) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        // const int k = seq ? i + j : thread->rand.Uniform(FLAGS_num);
+        if (!std::getline(csv_file, line)) { // 从文件中读取一行
+          fprintf(stderr, "Error reading key from file in YCSB_A\n");
+          return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+        if (row_data.size() != 7) {
+          fprintf(stderr, "Invalid CSV row format\n");
+          continue;
+        }
+
+        const uint64_t k = std::stoull(row_data[1]);
+
+        if (row_data[5]=="get"){
+          // fprintf(stdout,"The key is %lu!\n",k);
+          Read_Key.Set(k,24);
+          if (db_->Get(options, Read_Key.slice(), &value).ok()) {
+            found++;
+          }
+          bytes = (16 + FLAGS_value_size);
+          thread->stats.AddBytes(bytes);
+        }else if(row_data[5]=="set"){
+          // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
+          char key[100];
+          snprintf(key, sizeof(key), "%024llu", (unsigned long long)k);
+          s = db_->Put(write_options_, key, gen.Generate(value_size_));
+          if (!s.ok()) {
+            std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+            std::exit(1);
+          }
+          bytes += value_size_ + strlen(key);
+          if(thread->stats.done_ % FLAGS_stats_interval == 0){
+            thread->stats.AddBytes(bytes);
+            bytes = 0;
+          } 
+        }else{}
+        thread->stats.FinishedSingleOp();
+      }
+    }
+    fprintf(stderr,"We found %d keys and !\n",found);
+    thread->stats.AddBytes(bytes);
+  }
+
+  void DoWrite_zipf2(ThreadState* thread, bool seq) {
+    
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in zipf2\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+    assert(FLAGS_No_hot_percentage != -1);
+    std::fprintf(stdout, "start benchmarking num_ = %ld entries in DoWrite_zipf2()\n", num_);
+    uint64_t total_ops = 0;
+    for (uint64_t i = 0; i < num_; i += entries_per_batch_) {
+      batch.Clear();
+      for (uint64_t j = 0; j < entries_per_batch_; j++) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        if (!std::getline(csv_file, line)) { 
+          fprintf(stderr, "Error reading key from file\n");
+          return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+        if (row_data.size() != 1) {
+          fprintf(stderr, "Invalid CSV row format\n");
+          continue;
+        }
+        const uint64_t k = std::stoull(row_data[0]);
+        thread->stats.Addops(db_);
+        if(k <= FLAGS_No_hot_percentage){
+          continue;
+        }
+        // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
+        char key[100];
+        snprintf(key, sizeof(key), "%016llu", (unsigned long long)k);
+        batch.Put(key, gen.Generate(value_size_));
+        bytes += value_size_ + strlen(key);
+        if(thread->stats.real_ops % FLAGS_stats_interval == 0 ){
+          // fprintf(stderr,"real_ops : %lu\n",thread->stats.real_ops);
+          thread->stats.AddBytes(bytes);
+          bytes = 0;
+        }
+        thread->stats.FinishedSingleOp();
+        // thread->stats.FinishedSingleOp(db_);
+      }
+      s = db_->Write(write_options_, &batch);
+      if (!s.ok()) {
+        std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+        std::exit(1);
+      }
+    }
+    thread->stats.AddBytes(bytes);
+  }
+
+  void DoWrite_twitter_cluster(ThreadState* thread, bool seq) {
+      
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in zipf2\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+    assert(FLAGS_No_hot_percentage != -1);
+    std::fprintf(stdout, "start benchmarking num_ = %ld entries in DoWrite_zipf2()\n", num_);
+    uint64_t total_ops = 0;
+    for (uint64_t i = 0; i < num_; i += entries_per_batch_) {
+      batch.Clear();
+      for (uint64_t j = 0; j < entries_per_batch_; j++) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        if (!std::getline(csv_file, line)) { 
+          fprintf(stderr, "Error reading key from file\n");
+          return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+        if (row_data.size() != 7) {
+          fprintf(stderr, "Invalid CSV row format\n");
+          continue;
+        }
+
+        if(row_data[4] =="get" || row_data[4] =="cas" || row_data[4] =="delete"){
+          continue;
+        }
+
+        const uint64_t k = std::stoull(row_data[1]);
+
+        if(i<10){
+          fprintf(stdout,"the key is: %lu \n",k);
+        }
+
+        thread->stats.Addops(db_);
+        // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
+        char key[100];
+        snprintf(key, sizeof(key), "%024llu", (unsigned long long)k);
+        batch.Put(key, gen.Generate(value_size_));
+        bytes += value_size_ + strlen(key);
+        if(thread->stats.real_ops % FLAGS_stats_interval == 0 ){
+          // fprintf(stderr,"real_ops : %lu\n",thread->stats.real_ops);
+          thread->stats.AddBytes(bytes);
+          bytes = 0;
+        }
+        thread->stats.FinishedSingleOp();
+        // thread->stats.FinishedSingleOp(db_);
+      }
+      s = db_->Write(write_options_, &batch);
+      if (!s.ok()) {
+        std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+        std::exit(1);
+      }
+    }
+    thread->stats.print_mem_usage();
+    thread->stats.AddBytes(bytes);
+  }
+
+  void DoWrite_zipf3(ThreadState* thread, bool seq) {
+    
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    KeyBuffer key;
+
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in zipf2\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+    assert(FLAGS_No_hot_percentage != -1);
+    std::fprintf(stdout, "start benchmarking num_ = %ld entries in DoWrite_zipf2()\n", num_);
+    uint64_t total_ops = 0;
+    for (uint64_t i = 0; i < num_; i += entries_per_batch_) {
+      batch.Clear();
+      for (uint64_t j = 0; j < entries_per_batch_; j++) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+        if (!std::getline(csv_file, line)) { 
+          fprintf(stderr, "Error reading key from file\n");
+          return;
+        }
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+        if (row_data.size() != 1) {
+          fprintf(stderr, "Invalid CSV row format\n");
+          continue;
+        }
+        const uint64_t k = std::stoull(row_data[0]);
+        thread->stats.Addops(db_);
+        // if(k <= FLAGS_No_hot_percentage){
+        //   continue;
+        // }
+        // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
+        char key[100];
+        snprintf(key, sizeof(key), "%016llu", (unsigned long long)k);
+        batch.Put(key, gen.Generate(value_size_));
+        bytes += value_size_ + strlen(key);
+        if(thread->stats.real_ops % FLAGS_stats_interval == 0 ){
+          // fprintf(stderr,"real_ops : %lu\n",thread->stats.real_ops);
+          thread->stats.AddBytes(bytes);
+          bytes = 0;
+        }
+        thread->stats.FinishedSingleOp();
+        // thread->stats.FinishedSingleOp(db_);
+      }
+      s = db_->Write(write_options_, &batch);
+      if (!s.ok()) {
+        std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
+        std::exit(1);
+      }
+    }
+    thread->stats.AddBytes(bytes);
+  }
+
+
+  void range_query_read(ThreadState* thread) {
+
+    ReadOptions options;
+    std::string value;
+    int found = 0;
+    variable_Buffer Key;
+    Iterator* iter = db_->NewIterator(options);
+
+    std::ifstream csv_file(FLAGS_RangeRead_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in range_query_read\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    uint64_t seek_length = FLAGS_range_query_length;
+
+    for (int i = 0; i < reads_; i++) {
+      line_stream.clear();
+      line_stream.str("");
+      row_data.clear();
+      
+      if (!std::getline(csv_file, line)) { // 从文件中读取一行
+        fprintf(stderr, "Error reading key from file\n");
+        return;
+      }
+      line_stream << line;
+      while (getline(line_stream, cell, ',')) {
+        row_data.push_back(cell);
+      }
+      if (row_data.size() != 1) {
+        fprintf(stderr, "Invalid CSV row format\n");
+        continue;
+      }
+      const uint64_t k = std::stoull(row_data[0]);
+      Key.Set(k);
+      iter->Seek(Key.slice());
+      if (iter->Valid() && iter->key() == Key.slice()) found++;
+      while (seek_length--){
+        // fprintf(stdout,"Searched Key is: %s \n", iter->key().data());
+        iter->Next();
+      }
+      seek_length = FLAGS_range_query_length;
+      thread->stats.FinishedSingleOp();
+    }
+    
+    char msg[100];
+    std::snprintf(msg, sizeof(msg), "(%d of %d found)", found, reads_);
+    thread->stats.AddMessage(msg);
   }
 
   void ReadSequential(ThreadState* thread) {
@@ -895,9 +2271,37 @@ class Benchmark {
     ReadOptions options;
     std::string value;
     int found = 0;
-    KeyBuffer key;
-    for (int i = 0; i < reads_; i++) {
-      const int k = thread->rand.Uniform(FLAGS_num);
+    variable_Buffer key;
+
+    std::ifstream csv_file(FLAGS_Read_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+        fprintf(stderr,"Unable to open CSV file in point_query_read\n");
+        return;
+    }
+    std::getline(csv_file, line);
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    for (int i = 0; i < FLAGS_reads; i++) {
+      line_stream.clear();
+      line_stream.str("");
+      row_data.clear();
+      
+      if (!std::getline(csv_file, line)) { // 从文件中读取一行
+        fprintf(stderr, "Error reading key from file\n");
+        return;
+      }
+      line_stream << line;
+      while (getline(line_stream, cell, ',')) {
+        row_data.push_back(cell);
+      }
+      if (row_data.size() != 1) {
+        fprintf(stderr, "Invalid CSV row format\n");
+        continue;
+      }
+      const uint64_t k = std::stoull(row_data[0]);
       key.Set(k);
       if (db_->Get(options, key.slice(), &value).ok()) {
         found++;
@@ -905,7 +2309,7 @@ class Benchmark {
       thread->stats.FinishedSingleOp();
     }
     char msg[100];
-    std::snprintf(msg, sizeof(msg), "(%d of %d found)", found, num_);
+    std::snprintf(msg, sizeof(msg), "(%d of %ld found)", found, num_);
     thread->stats.AddMessage(msg);
   }
 
@@ -939,6 +2343,7 @@ class Benchmark {
     ReadOptions options;
     int found = 0;
     KeyBuffer key;
+
     for (int i = 0; i < reads_; i++) {
       Iterator* iter = db_->NewIterator(options);
       const int k = thread->rand.Uniform(FLAGS_num);
@@ -949,7 +2354,7 @@ class Benchmark {
       thread->stats.FinishedSingleOp();
     }
     char msg[100];
-    snprintf(msg, sizeof(msg), "(%d of %d found)", found, num_);
+    snprintf(msg, sizeof(msg), "(%d of %ld found)", found, num_);
     thread->stats.AddMessage(msg);
   }
 
@@ -968,7 +2373,7 @@ class Benchmark {
     }
     delete iter;
     char msg[100];
-    std::snprintf(msg, sizeof(msg), "(%d of %d found)", found, num_);
+    std::snprintf(msg, sizeof(msg), "(%d of %ld found)", found, num_);
     thread->stats.AddMessage(msg);
   }
 
@@ -1044,7 +2449,7 @@ class Benchmark {
 
   void HeapProfile() {
     char fname[100];
-    std::snprintf(fname, sizeof(fname), "%s/heap-%04d", FLAGS_db,
+    std::snprintf(fname, sizeof(fname), "%s/heap-%04d", FLAGS_db.c_str(),
                   ++heap_counter_);
     WritableFile* file;
     Status s = g_env->NewWritableFile(fname, &file);
@@ -1070,66 +2475,86 @@ int main(int argc, char** argv) {
   FLAGS_open_files = leveldb::Options().max_open_files;
   std::string default_db_path;
 
-  for (int i = 1; i < argc; i++) {
-    double d;
-    int n;
-    char junk;
-    if (leveldb::Slice(argv[i]).starts_with("--benchmarks=")) {
-      FLAGS_benchmarks = argv[i] + strlen("--benchmarks=");
-    } else if (sscanf(argv[i], "--compression_ratio=%lf%c", &d, &junk) == 1) {
-      FLAGS_compression_ratio = d;
-    } else if (sscanf(argv[i], "--histogram=%d%c", &n, &junk) == 1 &&
-               (n == 0 || n == 1)) {
-      FLAGS_histogram = n;
-    } else if (sscanf(argv[i], "--comparisons=%d%c", &n, &junk) == 1 &&
-               (n == 0 || n == 1)) {
-      FLAGS_comparisons = n;
-    } else if (sscanf(argv[i], "--use_existing_db=%d%c", &n, &junk) == 1 &&
-               (n == 0 || n == 1)) {
-      FLAGS_use_existing_db = n;
-    } else if (sscanf(argv[i], "--reuse_logs=%d%c", &n, &junk) == 1 &&
-               (n == 0 || n == 1)) {
-      FLAGS_reuse_logs = n;
-    } else if (sscanf(argv[i], "--compression=%d%c", &n, &junk) == 1 &&
-               (n == 0 || n == 1)) {
-      FLAGS_compression = n;
-    } else if (sscanf(argv[i], "--num=%d%c", &n, &junk) == 1) {
-      FLAGS_num = n;
-    } else if (sscanf(argv[i], "--reads=%d%c", &n, &junk) == 1) {
-      FLAGS_reads = n;
-    } else if (sscanf(argv[i], "--threads=%d%c", &n, &junk) == 1) {
-      FLAGS_threads = n;
-    } else if (sscanf(argv[i], "--value_size=%d%c", &n, &junk) == 1) {
-      FLAGS_value_size = n;
-    } else if (sscanf(argv[i], "--write_buffer_size=%d%c", &n, &junk) == 1) {
-      FLAGS_write_buffer_size = n;
-    } else if (sscanf(argv[i], "--max_file_size=%d%c", &n, &junk) == 1) {
-      FLAGS_max_file_size = n;
-    } else if (sscanf(argv[i], "--block_size=%d%c", &n, &junk) == 1) {
-      FLAGS_block_size = n;
-    } else if (sscanf(argv[i], "--key_prefix=%d%c", &n, &junk) == 1) {
-      FLAGS_key_prefix = n;
-    } else if (sscanf(argv[i], "--cache_size=%d%c", &n, &junk) == 1) {
-      FLAGS_cache_size = n;
-    } else if (sscanf(argv[i], "--bloom_bits=%d%c", &n, &junk) == 1) {
-      FLAGS_bloom_bits = n;
-    } else if (sscanf(argv[i], "--open_files=%d%c", &n, &junk) == 1) {
-      FLAGS_open_files = n;
-    } else if (strncmp(argv[i], "--db=", 5) == 0) {
-      FLAGS_db = argv[i] + 5;
-    } else {
-      std::fprintf(stderr, "Invalid flag '%s'\n", argv[i]);
-      std::exit(1);
-    }
+  // for (int i = 1; i < argc; i++) {
+  //   double d;
+  //   int n;
+  //   char junk;
+  //   if (leveldb::Slice(argv[i]).starts_with("--benchmarks=")) {
+  //     FLAGS_benchmarks = argv[i] + strlen("--benchmarks=");
+  //   } else if (sscanf(argv[i], "--compression_ratio=%lf%c", &d, &junk) == 1) {
+  //     FLAGS_compression_ratio = d;
+  //   } else if (sscanf(argv[i], "--histogram=%d%c", &n, &junk) == 1 &&
+  //              (n == 0 || n == 1)) {
+  //     FLAGS_histogram = n;
+  //   } else if (sscanf(argv[i], "--comparisons=%d%c", &n, &junk) == 1 &&
+  //              (n == 0 || n == 1)) {
+  //     FLAGS_comparisons = n;
+  //   } else if (sscanf(argv[i], "--use_existing_db=%d%c", &n, &junk) == 1 &&
+  //              (n == 0 || n == 1)) {
+  //     FLAGS_use_existing_db = n;
+  //   } else if (sscanf(argv[i], "--reuse_logs=%d%c", &n, &junk) == 1 &&
+  //              (n == 0 || n == 1)) {
+  //     FLAGS_reuse_logs = n;
+  //   } else if (sscanf(argv[i], "--compression=%d%c", &n, &junk) == 1 &&
+  //              (n == 0 || n == 1)) {
+  //     FLAGS_compression = n;
+  //   } else if (sscanf(argv[i], "--num=%lu%c", &n, &junk) == 1) {
+  //     FLAGS_num = n;
+  //   }else if (sscanf(argv[i], "--range=%lu%c", &n, &junk) == 1) {
+  //     FLAGS_range = n;
+  //   } else if (sscanf(argv[i], "--reads=%d%c", &n, &junk) == 1) {
+  //     FLAGS_reads = n;
+  //   }else if (sscanf(argv[i], "--stats_interval=%d%c", &n, &junk) == 1) {
+  //     FLAGS_stats_interval = n;
+  //   } else if (sscanf(argv[i], "--threads=%d%c", &n, &junk) == 1) {
+  //     FLAGS_threads = n;
+  //   } else if (sscanf(argv[i], "--value_size=%d%c", &n, &junk) == 1) {
+  //     FLAGS_value_size = n;
+  //   } else if (sscanf(argv[i], "--write_buffer_size=%d%c", &n, &junk) == 1) {
+  //     FLAGS_write_buffer_size = n;
+  //   } else if (sscanf(argv[i], "--max_file_size=%d%c", &n, &junk) == 1) {
+  //     FLAGS_max_file_size = n;
+  //   } else if (sscanf(argv[i], "--block_size=%d%c", &n, &junk) == 1) {
+  //     FLAGS_block_size = n;
+  //   } else if (sscanf(argv[i], "--key_prefix=%d%c", &n, &junk) == 1) {
+  //     FLAGS_key_prefix = n;
+  //   } else if (sscanf(argv[i], "--cache_size=%d%c", &n, &junk) == 1) {
+  //     FLAGS_cache_size = n;
+  //   } else if (sscanf(argv[i], "--bloom_bits=%d%c", &n, &junk) == 1) {
+  //     FLAGS_bloom_bits = n;
+  //   } else if (sscanf(argv[i], "--open_files=%d%c", &n, &junk) == 1) {
+  //     FLAGS_open_files = n;
+  //   } else if (strncmp(argv[i], "--db=", 5) == 0) {
+  //     FLAGS_db = argv[i] + 5;
+  //   }else if (strncmp(argv[i], "--data_file=", 12) == 0) {
+  //     FLAGS_data_file = argv[i] + 12;
+  //   } else {
+  //     std::fprintf(stderr, "Invalid flag '%s'\n", argv[i]);
+  //     std::exit(1);
+  //   }
+  // }
+
+  for (int i = 0; i < argc; ++i) {
+    printf("%s ", argv[i]);
   }
+  printf("\n");
+  ParseCommandLineFlags(&argc, &argv, true);
 
   leveldb::g_env = leveldb::Env::Default();
 
   // Choose a location for the test database if none given with --db=<path>
-  if (FLAGS_db == nullptr) {
+  if (FLAGS_db == "") {
     leveldb::g_env->GetTestDirectory(&default_db_path);
     default_db_path += "/dbbench";
     FLAGS_db = default_db_path.c_str();
+  }
+
+  if(FLAGS_range == 0){
+    FLAGS_range = FLAGS_num;
+  }
+
+  if (FLAGS_logpath == "") {
+    FLAGS_logpath = FLAGS_db;
   }
 
   leveldb::Benchmark benchmark;
