@@ -297,6 +297,7 @@ CMakeFiles/leveldb_tests.dir/db/autocompact_test.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./db/snapshot.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/env.h \
  /usr/include/c++/11/cstdarg \
+ /home/jeff-wang/LSM-tuning/SATune/./db/db_compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/cache.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/testutil.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googlemock/include/gmock/gmock.h \

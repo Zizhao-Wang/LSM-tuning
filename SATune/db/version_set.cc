@@ -811,7 +811,7 @@ class VersionSet::Builder {
 
 VersionSet::VersionSet(const std::string& dbname, const Options* options,
                        TableCache* table_cache,
-                       const InternalKeyComparator* cmp)
+                       const InternalKeyComparator* cmp, const CompactionOptionsAtomic* compaction_opts_atomic_)
     : env_(options->env),
       dbname_(dbname),
       options_(options),
@@ -822,6 +822,7 @@ VersionSet::VersionSet(const std::string& dbname, const Options* options,
       last_sequence_(0),
       log_number_(0),
       prev_log_number_(0),
+      comp_opts_atomic_(compaction_opts_atomic_),
       descriptor_file_(nullptr),
       descriptor_log_(nullptr),
       dummy_versions_(this),

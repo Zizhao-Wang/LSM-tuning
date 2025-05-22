@@ -114,6 +114,8 @@ DEFINE_string(YCSB_data_file, "", "Use the db with the following name.");
 
 DEFINE_int64(ycsb_num, 10000000, "Number of key/values to place in database");
 
+DEFINE_int64(workload_num, 10000000, "Number of key/values to place in database in twitter/real-world traces");
+
 DEFINE_int64(No_hot_percentage, 0, "");
 
 DEFINE_int32(zstd_compression_level, 1, "ZSTD compression level to try out");
@@ -146,6 +148,8 @@ DEFINE_int32(duration, 0, "Time in seconds for the random-ops tests to run."
 
 // Size of each value
 DEFINE_int32(value_size, 100, "Size of each value");
+
+DEFINE_int32(key_size, 100, "Size of each value");
 
 DEFINE_int32(read_write_ratio, 100, "read_write_ratio");
 
@@ -587,6 +591,13 @@ static void AppendWithSpace(std::string* str, Slice msg) {
 
 //   ThreadState(int index, int seed) : tid(index), rand(seed), shared(nullptr) {}
 // };
+enum OperationType : int {
+  kWrite = 0,
+  kPointQuery,
+  kRangeQuery,
+  kAllOps,             // 用于汇总所有操作
+  kNumOperationTypes
+};
 
 class Stats {
  public:
@@ -594,21 +605,32 @@ class Stats {
   double start_;
   double finish_;
   double seconds_;
-  uint64_t done_;
+
   uint64_t last_report_done_;
   uint64_t last_report_finish_;
-  uint64_t next_report_;
+
   double next_report_time_;
   int64_t   bytes_;
+
   int call_ref;
   uint64_t real_ops;
+
+  uint64_t next_report_;
+  uint64_t done_;
   double last_op_finish_;
-  Histogram hist_;
+
+  // 为每种类型（包括总和）维护一个 histogram
+  std::array<Histogram, kNumOperationTypes> hist_;
+  std::array<uint64_t, kNumOperationTypes> op_done_;
+
   std::string message_;
+
+  static const char* op_names_[kNumOperationTypes];
 
  public:
   Stats() { Start(); }
   Stats(int id) { id_ = id; Start(); }
+
   void Start() {
     start_ = g_env->NowMicros();
     next_report_time_ = start_;
@@ -616,7 +638,7 @@ class Stats {
     last_op_finish_ = start_;
     last_report_done_ = 0;
     last_report_finish_ = start_;
-    hist_.Clear();
+    // hist_.Clear();
     done_ = 0;
     real_ops = 0;
     bytes_ = 0;
@@ -624,10 +646,18 @@ class Stats {
     seconds_ = 0;
     finish_ = start_;
     message_.clear();
+
+    for (int i = 0; i < kNumOperationTypes; ++i) {
+      hist_[i].Clear();
+      op_done_[i]       = 0;
+    }
   }
 
   void Merge(const Stats& other) {
-    hist_.Merge(other.hist_);
+    for (int i = 0; i < kNumOperationTypes; ++i) {
+      hist_[i].Merge(other.hist_[i]);
+    }
+
     done_ += other.done_;
     bytes_ += other.bytes_;
     seconds_ += other.seconds_;
@@ -730,11 +760,11 @@ class Stats {
     call_ref++;
   }
 
-  void FinishedSingleOp2(DB* db = nullptr) {
+  void FinishedSingleOp2(DB* db = nullptr, OperationType op= kWrite) {
     if (FLAGS_histogram) {
       double now = g_env->NowMicros();
       double micros = now - last_op_finish_;
-      hist_.Add(micros);
+      hist_[op].Add(micros);
       if (micros > 20000) {
         fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
         fflush(stderr);
@@ -770,19 +800,25 @@ class Stats {
     }
   }
 
-  void FinishedSingleOp(DB* db = nullptr) {
+  void FinishedSingleOp(DB* db = nullptr, OperationType op= kWrite) {
     if (FLAGS_histogram) {
       double now = g_env->NowMicros();
       double micros = now - last_op_finish_;
-      hist_.Add(micros);
-      if (micros > 200000000) {
+      
+      hist_[op].Add(micros);
+      hist_[kAllOps].Add(micros);
+
+      if (micros > 2000000) {
         fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
         fflush(stderr);
       }
+
       last_op_finish_ = now;
     }
 
     done_++;
+    op_done_[op]++;
+    op_done_[kAllOps]++;
     if (done_ >= next_report_) {
       if      (next_report_ < 1000)   next_report_ += 100;
       else if (next_report_ < 5000)   next_report_ += 500;
@@ -856,11 +892,23 @@ class Stats {
             (long)throughput,
             (extra.empty() ? "" : " "),
             extra.c_str());
+
     if (FLAGS_histogram) {
-      fprintf(stdout, "Microseconds per op:\n%s\n", hist_.ToString().c_str());
+      for (int i = 0; i < kNumOperationTypes; ++i) {
+        if (op_done_[i] == 0) continue;
+        fprintf(stdout, "%s: Microseconds per op:\n%s\n", op_names_[i], hist_[i].ToString().c_str());
+      }
     }
+
     fflush(stdout);
   }
+};
+
+const char* Stats::op_names_[kNumOperationTypes] = {
+  "WRITE",       // kWrite
+  "POINT_QUERY", // kPointQuery
+  "RANGE_QUERY", // kRangeQuery
+  "ALL_OPS"      // kAllOps
 };
 
 // State shared by all concurrent executions of the same benchmark.
@@ -1140,9 +1188,11 @@ class Benchmark {
       } else if (name == Slice("fillzipf2")) {
         fresh_db = true;
         method = &Benchmark::WriteZipf2;
-      } else if (name == Slice("filltwitter")) {
+      } else if (name == Slice("fillcluster")) {
         fresh_db = true;
-        method = &Benchmark::Writecluster;
+        method = &Benchmark::WriteCluster;
+      } else if (name == Slice("clusterQuery")) {
+        method = &Benchmark::Cluster_benchmarking;
       } else if (name == Slice("filletc")) {
         fresh_db = true;
         method = &Benchmark::WriteRandom_from_file;
@@ -1431,7 +1481,13 @@ class Benchmark {
 
   void WriteZipf2(ThreadState* thread) { DoWrite_zipf3(thread, false); }
 
-  void Writecluster(ThreadState* thread) { DoWrite_twitter_cluster(thread, false); }
+  void WriteCluster(ThreadState* thread) { 
+    DoWrite_cluster(thread); 
+  }
+
+  void Cluster_benchmarking(ThreadState* thread) { 
+    Do_cluster_benchmarking(thread); 
+  } 
 
   void WriteRandom_from_file(ThreadState* thread) {
     DoWrite2(thread, false);
@@ -1600,6 +1656,234 @@ class Benchmark {
         std::exit(1);
       }
     }
+    thread->stats.AddBytes(bytes);
+  }
+
+  void DoWrite_cluster(ThreadState* thread) {
+    uint64_t num_written = 0;
+    std::string get_value;
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytes = 0;
+    int id = 0;
+
+    // 打开 CSV 文件
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+      fprintf(stderr, "Unable to open file: %s in WriteCluster!\n", FLAGS_data_file.c_str());
+      return;
+    }
+    std::getline(csv_file, line); // 读取并丢弃 CSV 文件的标题行
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    fprintf(stderr, "num_: %ld entries_per_batch_:%d\n The key size:%d value size:%d \n"
+      , num_, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
+
+    const int32_t k_size=FLAGS_key_size;
+    const int32_t v_size=FLAGS_value_size;
+    fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+
+    for (int64_t i = 0; i < num_; i += entries_per_batch_) {
+      batch.Clear();
+      int64_t batch_bytes = 0;
+
+      for (int64_t j = 0; j < entries_per_batch_; j++) {
+        int64_t rand_num = 0;
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+
+        if (!std::getline(csv_file, line)) { 
+          fprintf(stderr, "Error reading key from file in in WriteCluster!\n");
+          return;
+        }
+
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+
+        if (row_data.size() != 7) {
+          fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
+          continue;
+        }
+
+        if(i<=10){
+          fprintf(stdout,"the row_data[5] is:%s\n",row_data[5].c_str());
+        }
+
+        char format[20];
+        char key[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(format, sizeof(format), "%%0%dllu", k_size);
+        std::snprintf(key, sizeof(key), format, (unsigned long long)k);
+        Slice val = gen.Generate(v_size);
+
+        // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
+        batch.Put(key, val);
+          
+        batch_bytes += val.size() + k_size ;
+        bytes += val.size() + k_size ;
+        ++num_written;
+        thread->stats.FinishedSingleOp(db_, kWrite);
+      }
+      s = db_->Write(write_options_, &batch);
+
+      if (!s.ok()) {
+        fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
+        exit(0);
+      } 
+    }
+
+    fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
+    thread->stats.AddBytes(bytes);
+  }
+
+  void Do_cluster_benchmarking(ThreadState* thread) {
+    uint64_t num_written = 0;
+    std::string get_value;
+    uint64_t found;
+    ReadOptions roptions;
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytesadd = 0;
+    int64_t bytesget = 0;
+    int64_t bytesread = 0;
+    int64_t bytes = 0;
+    int id = 0;
+
+    // 打开 CSV 文件
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+      fprintf(stderr, "Unable to open file: %s in Do_cluster_benchmarking\n", FLAGS_data_file.c_str());
+      return;
+    }
+    std::getline(csv_file, line); // 读取并丢弃 CSV 文件的标题行
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    fprintf(stderr, "workload_num: %ld entries_per_batch_:%d\n The key size:%d value size:%d \n", 
+      FLAGS_workload_num, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
+
+    const int32_t k_size=FLAGS_key_size;
+    const int32_t v_size=FLAGS_value_size;
+    fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+
+    for (int64_t i = 0; i < FLAGS_workload_num; i += 1) {
+      batch.Clear();
+      int64_t batch_bytes = 0;
+
+      int64_t rand_num = 0;
+      line_stream.clear();
+      line_stream.str("");
+      row_data.clear();
+
+      if (!std::getline(csv_file, line)) { 
+        fprintf(stderr, "Error reading key from file\n");
+        return;
+      }
+
+      line_stream << line;
+      while (getline(line_stream, cell, ',')) {
+        row_data.push_back(cell);
+      }
+
+      if (row_data.size() != 7) {
+        fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
+        continue;
+      }
+
+      if(i<=10){
+        fprintf(stdout,"the row_data[5] is:%s\n",row_data[5].c_str());
+      }
+
+      if (row_data[5]=="get"||row_data[5]=="gets"){
+        char formatget[20];
+        char key1[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(formatget, sizeof(formatget), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatget, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+        auto sta1 = db_->Get(roptions, readkey, &get_value);
+        if (sta1.ok()) {
+          found++;
+        }
+        bytesget = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesget);
+        thread->stats.FinishedSingleOp(db_, kPointQuery);
+      }else if(row_data[5]=="add"||row_data[5]=="set"){
+        char formatadd[20];
+        char key2[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(formatadd, sizeof(formatadd), "%%0%dllu", k_size);
+        std::snprintf(key2, sizeof(key2), formatadd, (unsigned long long)k);
+        Slice val = gen.Generate(FLAGS_value_size);
+        // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
+        batch.Put(key2, val);
+        batch_bytes += val.size() + k_size ;
+        bytesadd += val.size() + k_size ;
+        s = db_->Write(write_options_, &batch);
+        thread->stats.AddBytes(bytesadd);
+        thread->stats.FinishedSingleOp(db_, kWrite);
+        if (!s.ok()) {
+          fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
+          exit(0);
+        } 
+      }else if(row_data[5]=="cas"){
+        char formatcas[20];
+        char key1[100];
+        const uint64_t k = std::stoull(row_data[1]);
+        std::snprintf(formatcas, sizeof(formatcas), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatcas, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+        auto sta2 = db_->Get(roptions, readkey, &get_value);
+        bytesread = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesread);
+        thread->stats.FinishedSingleOp(db_, kPointQuery);
+        if (sta2.ok()) {
+          char format3[20];
+          char key3[100];
+          const uint64_t cask = std::stoull(row_data[1]);
+          std::snprintf(format3, sizeof(format3), "%%0%dllu", k_size);
+          std::snprintf(key3, sizeof(key3), format3, (unsigned long long)cask);
+          Slice val3 = gen.Generate(FLAGS_value_size);
+          // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val3.size()); // 输出写入的键和值大小
+          batch.Put(key3, val3);
+          batch_bytes += val3.size() + k_size ;
+          bytes += val3.size() + k_size ;
+          s = db_->Write(write_options_, &batch);
+          thread->stats.AddBytes(bytes);
+          thread->stats.FinishedSingleOp(db_, kWrite);
+        }
+      }else{
+      }
+    }
+    thread->stats.print_mem_usage();
+    // thread->stats.printf_mem(db_.db);
+    fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
     thread->stats.AddBytes(bytes);
   }
 

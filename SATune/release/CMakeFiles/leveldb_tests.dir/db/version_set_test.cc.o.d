@@ -186,13 +186,14 @@ CMakeFiles/leveldb_tests.dir/db/version_set_test.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./port/thread_annotations.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/logging.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_edit.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/db_compaction_options.h \
+ /usr/include/c++/11/atomic /usr/include/c++/11/bits/atomic_base.h \
+ /usr/include/c++/11/bits/atomic_lockfree_defines.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include/gtest/gtest.h \
  /usr/include/c++/11/memory \
  /usr/include/c++/11/bits/stl_raw_storage_iter.h \
  /usr/include/c++/11/bits/align.h /usr/include/c++/11/bit \
  /usr/include/c++/11/bits/shared_ptr_atomic.h \
- /usr/include/c++/11/bits/atomic_base.h \
- /usr/include/c++/11/bits/atomic_lockfree_defines.h \
  /usr/include/c++/11/backward/auto_ptr.h /usr/include/c++/11/ostream \
  /usr/include/c++/11/ios /usr/include/c++/11/bits/ios_base.h \
  /usr/include/c++/11/bits/locale_classes.h \
@@ -275,7 +276,6 @@ CMakeFiles/leveldb_tests.dir/db/version_set_test.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include/gtest/gtest-death-test.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include/gtest/internal/gtest-death-test-internal.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include/gtest/gtest-matchers.h \
- /usr/include/c++/11/atomic \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include/gtest/gtest-printers.h \
  /usr/include/c++/11/functional /usr/include/c++/11/bits/std_function.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include/gtest/internal/custom/gtest-printers.h \

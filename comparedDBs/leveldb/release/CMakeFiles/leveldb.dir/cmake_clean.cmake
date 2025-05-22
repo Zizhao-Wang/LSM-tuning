@@ -67,6 +67,8 @@ file(REMOVE_RECURSE
   "CMakeFiles/leveldb.dir/util/env_posix.cc.o.d"
   "CMakeFiles/leveldb.dir/util/filter_policy.cc.o"
   "CMakeFiles/leveldb.dir/util/filter_policy.cc.o.d"
+  "CMakeFiles/leveldb.dir/util/global_stats.cc.o"
+  "CMakeFiles/leveldb.dir/util/global_stats.cc.o.d"
   "CMakeFiles/leveldb.dir/util/hash.cc.o"
   "CMakeFiles/leveldb.dir/util/hash.cc.o.d"
   "CMakeFiles/leveldb.dir/util/logging.cc.o"

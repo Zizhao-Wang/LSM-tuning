@@ -184,4 +184,7 @@ CMakeFiles/leveldb.dir/table/table.cc.o: \
  /usr/include/c++/11/array /usr/include/c++/11/bits/uses_allocator.h \
  /usr/include/c++/11/ext/aligned_buffer.h \
  /usr/include/c++/11/ext/concurrence.h /usr/include/c++/11/mutex \
- /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./port/thread_annotations.h
+ /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./port/thread_annotations.h \
+ /home/jeff-wang/LSM-tuning/comparedDBs/leveldb/./util/global_stats.h \
+ /usr/include/c++/11/atomic /usr/include/c++/11/bits/atomic_base.h \
+ /usr/include/c++/11/bits/atomic_lockfree_defines.h

@@ -186,14 +186,15 @@ CMakeFiles/leveldb.dir/db/version_set.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./port/thread_annotations.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/logging.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_edit.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/db_compaction_options.h \
+ /usr/include/c++/11/atomic /usr/include/c++/11/bits/atomic_base.h \
+ /usr/include/c++/11/bits/atomic_lockfree_defines.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/filename.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_reader.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_format.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_writer.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/memtable.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/skiplist.h \
- /usr/include/c++/11/atomic /usr/include/c++/11/bits/atomic_base.h \
- /usr/include/c++/11/bits/atomic_lockfree_defines.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/arena.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/random.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/table_cache.h \

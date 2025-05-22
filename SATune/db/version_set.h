@@ -23,6 +23,7 @@
 #include "db/version_edit.h"
 #include "port/port.h"
 #include "port/thread_annotations.h"
+#include "db/db_compaction_options.h"
 
 namespace leveldb {
 
@@ -167,7 +168,8 @@ class Version {
 class VersionSet {
  public:
   VersionSet(const std::string& dbname, const Options* options,
-             TableCache* table_cache, const InternalKeyComparator*);
+             TableCache* table_cache, const InternalKeyComparator*,
+             const CompactionOptionsAtomic* compaction_opts_atomic_ );
   VersionSet(const VersionSet&) = delete;
   VersionSet& operator=(const VersionSet&) = delete;
 
@@ -305,7 +307,10 @@ class VersionSet {
 
   Env* const env_;
   const std::string dbname_;
+
   const Options* const options_;
+  const CompactionOptionsAtomic*  comp_opts_atomic_;  // 指向一个不可通过它来修改的对象
+
   TableCache* const table_cache_;
   const InternalKeyComparator icmp_;
   uint64_t next_file_number_;

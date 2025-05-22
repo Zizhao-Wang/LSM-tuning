@@ -297,6 +297,7 @@ CMakeFiles/leveldb_tests.dir/db/recovery_test.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./db/snapshot.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/env.h \
  /usr/include/c++/11/cstdarg \
+ /home/jeff-wang/LSM-tuning/SATune/./db/db_compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/filename.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_set.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_edit.h \

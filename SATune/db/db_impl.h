@@ -21,8 +21,7 @@
 #include "port/port.h"
 #include "port/thread_annotations.h"
 #include "leveldb/compaction_options.h"
-
-
+#include "db/db_compaction_options.h"
 
 namespace leveldb {
 
@@ -31,22 +30,6 @@ class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
-
-struct CompactionOptionsAtomic {
-  std::atomic<int>    compaction_trigger;
-  std::atomic<int>    slowdown_writes_trigger;
-  std::atomic<int>    stop_writes_trigger;
-  std::atomic<int64_t> file_size_generated_in_compaction;
-  std::atomic<size_t>  block_size;
-
-  // 从非原子版初始化
-  explicit CompactionOptionsAtomic(const CompactionOptions& o)
-    : compaction_trigger(o.compaction_trigger),
-    slowdown_writes_trigger(o.slowdown_writes_trigger),
-    stop_writes_trigger(o.stop_writes_trigger),
-    file_size_generated_in_compaction(o.file_size_generated_in_compaction),
-    block_size(o.block_size) {}
-};
 
 
 class DBImpl : public DB {
@@ -113,8 +96,6 @@ class DBImpl : public DB {
   struct CompactionState;
   struct Writer;
 
-  CompactionOptionsAtomic compaction_opts_atomic_;
-
   // Information for a manual compaction
   struct ManualCompaction {
     int level;
@@ -141,7 +122,7 @@ class DBImpl : public DB {
   };
 
 
-    struct new_LeveldataStats {
+  struct new_LeveldataStats {
     new_LeveldataStats()
     : micros(0), 
       bytes_read(0), 
@@ -316,7 +297,10 @@ class DBImpl : public DB {
   Env* const env_;
   const InternalKeyComparator internal_comparator_;
   const InternalFilterPolicy internal_filter_policy_;
+
   const Options options_;  // options_.comparator == &internal_comparator_
+  CompactionOptionsAtomic compaction_opts_atomic_;
+
   const bool owns_info_log_;
   const bool owns_cache_;
   const std::string dbname_;

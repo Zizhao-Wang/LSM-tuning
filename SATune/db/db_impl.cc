@@ -156,7 +156,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       background_compaction_scheduled_(false),
       manual_compaction_(nullptr),
       versions_(new VersionSet(dbname_, &options_, table_cache_,
-                               &internal_comparator_)) {}
+                               &internal_comparator_, &compaction_opts_atomic_)) {}
 
 DBImpl::~DBImpl() {
   // Wait for background work to finish.
