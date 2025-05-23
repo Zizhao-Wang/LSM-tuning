@@ -12,14 +12,14 @@ namespace leveldb {
 // L0/Compaction 相关参数的集成 struct，提供默认值
 struct LEVELDB_EXPORT CompactionOptions {
 
-  // 当 L0 文件数 > compaction_trigger 时触发 L0→L1 compaction。
-  int compaction_trigger=4;
+  // 当 L0 文件数 > level0_compaction_trigger 时触发 L0→L1 compaction。
+  int level0_compaction_trigger=4;
 
-  // 当 L0 文件数 >= slowdown_writes_trigger 时让写入线程 sleep。
-  int slowdown_writes_trigger=12;
+  // 当 L0 文件数 >= level0_slowdown_writes_trigger 时让写入线程 sleep。
+  int level0_slowdown_writes_trigger=12;
 
-  // 当 L0 文件数 >= stop_writes_trigger 时阻止新的写入。
-  int stop_writes_trigger=20;
+  // 当 L0 文件数 >= level0_stop_writes_trigger 时阻止新的写入。
+  int level0_stop_writes_trigger=20;
 
   int64_t file_size_generated_in_compaction = 64LL * 1024 * 1024;
 

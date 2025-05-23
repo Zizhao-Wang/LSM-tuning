@@ -1806,7 +1806,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       s = bg_error_;
       break;
     } else if (allow_delay && versions_->NumLevelFiles(0) >=
-                                  config::kL0_SlowdownWritesTrigger) {
+                                compaction_opts_atomic_.level0_compaction_trigger.load()) {
       // We are getting close to hitting a hard limit on the number of
       // L0 files.  Rather than delaying a single write by several
       // seconds when we hit the hard limit, start delaying each
@@ -1826,7 +1826,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       // one is still being compacted, so we wait.
       Log(options_.info_log, "Current memtable full; waiting...\n");
       background_work_finished_signal_.Wait();
-    } else if (versions_->NumLevelFiles(0) >= config::kL0_StopWritesTrigger) {
+    } else if (versions_->NumLevelFiles(0) >= compaction_opts_atomic_.level0_stop_writes_trigger.load()) {
       // There are too many level-0 files.
       Log(options_.info_log, "Too many L0 files; waiting...\n");
       background_work_finished_signal_.Wait();

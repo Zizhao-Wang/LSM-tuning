@@ -26,6 +26,18 @@ declare -A param_map=(
   ["30_200000000_5000"]="80"
   ["30_200000000_10000"]="100"
 
+# cluster=30, num_kvs2=400M
+  ["30_400000000_300"]="40"
+  ["30_400000000_1000"]="60"
+  ["30_400000000_5000"]="80"
+  ["30_400000000_10000"]="100"
+
+# cluster=30, num_kvs2=200M
+  ["30_200000000_300"]="30"
+  ["30_200000000_1000"]="45"
+  ["30_200000000_5000"]="80"
+  ["30_200000000_10000"]="100"
+
   # cluster=25, num_kvs2=300M
   ["25_300000000_300"]="--param=aaa"
   ["25_300000000_1000"]="--param=bbb"
@@ -90,7 +102,7 @@ convert_to_billion_format() {
 
 for i in {1..1}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_TwitterCluster30_Benchmarking"
+    dir1="${i}B_RocksDB_SATASSD_TwitterCluster30_Benchmarking"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -104,7 +116,7 @@ for i in {1..1}; do
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
-                for num_kvs2 in 200000000; do
+                for num_kvs2 in 400000000; do
                 num_format3=$(convert_to_billion_format "$num_kvs2")
                     for workload_kvs in 100000000 ; do #200000000 300000000 400000000 500000000
                     num_format2=$(convert_to_billion_format "$workload_kvs")

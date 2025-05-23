@@ -44,15 +44,15 @@ static double MaxBytesForLevel(const CompactionOptionsAtomic* options, int level
   // the level-0 compaction threshold based on number of files.
 
   // Result for both level-0 and level-1
-  double result = options->max_bytes_for_level1_base;
+  double result = options->max_bytes_for_level1_base.load();
 
   // if(level >= 1){
   //   // Define the size for level 1
   //   result = 2000. * 1048576.0;  
   // }
-
+  double multiplier=options->max_bytes_for_level1_multiplier.load();
   while (level > 1) {
-    result *= options->max_bytes_for_level1_multiplier;
+    result *= multiplier;
     level--;
   }
   return result;
@@ -1128,12 +1128,11 @@ void VersionSet::Finalize(Version* v) {
       // setting, or very high compression ratios, or lots of
       // overwrites/deletions).
       score = v->files_[level].size() /
-              static_cast<double>(config::kL0_CompactionTrigger);
+              static_cast<double>(comp_opts_atomic_->level0_compaction_trigger.load());
     } else {
       // Compute the ratio of current size to size limit.
       const uint64_t level_bytes = TotalFileSize(v->files_[level]);
-      score =
-          static_cast<double>(level_bytes) / MaxBytesForLevel(options_, level);
+      score = static_cast<double>(level_bytes) / MaxBytesForLevel(comp_opts_atomic_, level);
     }
 
     if (score > best_score) {
