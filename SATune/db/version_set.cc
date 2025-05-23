@@ -39,12 +39,12 @@ static int64_t ExpandedCompactionByteSizeLimit(const Options* options) {
   return 25 * TargetFileSize(options);
 }
 
-static double MaxBytesForLevel(const Options* options, int level) {
+static double MaxBytesForLevel(const CompactionOptionsAtomic* options, int level) {
   // Note: the result for level zero is not really used since we set
   // the level-0 compaction threshold based on number of files.
 
   // Result for both level-0 and level-1
-  double result = 10. * 1048576.0;
+  double result = options->max_bytes_for_level1_base;
 
   // if(level >= 1){
   //   // Define the size for level 1
@@ -52,7 +52,7 @@ static double MaxBytesForLevel(const Options* options, int level) {
   // }
 
   while (level > 1) {
-    result *= 10;
+    result *= options->max_bytes_for_level1_multiplier;
     level--;
   }
   return result;

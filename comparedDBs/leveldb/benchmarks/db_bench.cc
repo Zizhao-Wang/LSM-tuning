@@ -811,20 +811,19 @@ class Stats {
       else if (next_report_ < 100000) next_report_ += 10000;
       else if (next_report_ < 500000) next_report_ += 50000;
       else                            next_report_ += 100000;
-
-      // if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
-      //   PrintSpeed(); 
-      //   if (FLAGS_print_wa && db) {
-      //     std::string stats;
-      //     if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
-      //       stats = "(failed)";
-      //     }
-      //     fprintf(stdout, "%s\n", stats.c_str());
-      //     fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
-      //     fflush(stdout);
-      //   }
-      // }
-      fprintf(stderr, "... finished %llu ops%30s\r", (unsigned long long)done_, "");
+      if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
+        PrintSpeed(); 
+        if (FLAGS_print_wa && db) {
+          std::string stats;
+          if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
+            stats = "(failed)";
+          }
+          fprintf(stdout, "%s\n", stats.c_str());
+          fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
+          fflush(stdout);
+        }
+      }
+      // fprintf(stderr, "... finished %llu ops%30s\r", (unsigned long long)done_, "");
       fflush(stderr);
     }
   }

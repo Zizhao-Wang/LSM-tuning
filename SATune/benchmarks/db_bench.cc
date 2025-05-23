@@ -595,6 +595,7 @@ enum OperationType : int {
   kWrite = 0,
   kPointQuery,
   kRangeQuery,
+  kReadModifyWrite,
   kAllOps,             // 用于汇总所有操作
   kNumOperationTypes
 };
@@ -808,40 +809,24 @@ class Stats {
       hist_[op].Add(micros);
       hist_[kAllOps].Add(micros);
 
-      if (micros > 2000000) {
-        fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
-        fflush(stderr);
-      }
-
       last_op_finish_ = now;
     }
 
     done_++;
     op_done_[op]++;
     op_done_[kAllOps]++;
-    if (done_ >= next_report_) {
-      if      (next_report_ < 1000)   next_report_ += 100;
-      else if (next_report_ < 5000)   next_report_ += 500;
-      else if (next_report_ < 10000)  next_report_ += 1000;
-      else if (next_report_ < 50000)  next_report_ += 5000;
-      else if (next_report_ < 100000) next_report_ += 10000;
-      else if (next_report_ < 500000) next_report_ += 50000;
-      else                            next_report_ += 100000;
 
-      // if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
-      //   PrintSpeed(); 
-      //   if (FLAGS_print_wa && db) {
-      //     std::string stats;
-      //     if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
-      //       stats = "(failed)";
-      //     }
-      //     fprintf(stdout, "%s\n", stats.c_str());
-      //     fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
-      //     fflush(stdout);
-      //   }
-      // }
-      fprintf(stderr, "... finished %llu ops%30s\r", (unsigned long long)done_, "");
-      fflush(stderr);
+    if((FLAGS_stats_interval != -1) && done_ % FLAGS_stats_interval == 0) {
+      PrintSpeed(); 
+      if (FLAGS_print_wa && db) {
+        std::string stats;
+        if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
+          stats = "(failed)";
+        }
+        fprintf(stdout, "%s\n", stats.c_str());
+        fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
+        fflush(stdout);
+      }
     }
   }
 
@@ -1792,8 +1777,6 @@ class Benchmark {
 
     for (int64_t i = 0; i < FLAGS_workload_num; i += 1) {
       batch.Clear();
-      int64_t batch_bytes = 0;
-
       int64_t rand_num = 0;
       line_stream.clear();
       line_stream.str("");
@@ -1830,7 +1813,7 @@ class Benchmark {
         if (sta1.ok()) {
           found++;
         }
-        bytesget = (16 + FLAGS_value_size);
+        bytesget = (k_size + v_size);
         thread->stats.AddBytes(bytesget);
         thread->stats.FinishedSingleOp(db_, kPointQuery);
       }else if(row_data[5]=="add"||row_data[5]=="set"){
@@ -1842,7 +1825,6 @@ class Benchmark {
         Slice val = gen.Generate(FLAGS_value_size);
         // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
         batch.Put(key2, val);
-        batch_bytes += val.size() + k_size ;
         bytesadd += val.size() + k_size ;
         s = db_->Write(write_options_, &batch);
         thread->stats.AddBytes(bytesadd);
@@ -1860,9 +1842,7 @@ class Benchmark {
         Slice readkey(key1);
         std::string* ts_ptr = nullptr;
         auto sta2 = db_->Get(roptions, readkey, &get_value);
-        bytesread = (16 + FLAGS_value_size);
-        thread->stats.AddBytes(bytesread);
-        thread->stats.FinishedSingleOp(db_, kPointQuery);
+        bytesread = (k_size + v_size);
         if (sta2.ok()) {
           char format3[20];
           char key3[100];
@@ -1872,12 +1852,11 @@ class Benchmark {
           Slice val3 = gen.Generate(FLAGS_value_size);
           // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val3.size()); // 输出写入的键和值大小
           batch.Put(key3, val3);
-          batch_bytes += val3.size() + k_size ;
-          bytes += val3.size() + k_size ;
+          bytesread += val3.size() + k_size ;
           s = db_->Write(write_options_, &batch);
-          thread->stats.AddBytes(bytes);
-          thread->stats.FinishedSingleOp(db_, kWrite);
         }
+        thread->stats.AddBytes(bytesread);
+        thread->stats.FinishedSingleOp(db_, kReadModifyWrite);
       }else{
       }
     }
