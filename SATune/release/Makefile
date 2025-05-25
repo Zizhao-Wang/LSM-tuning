@@ -1767,6 +1767,30 @@ util/histogram.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/histogram.cc.s
 .PHONY : util/histogram.cc.s
 
+util/independent_cache.o: util/independent_cache.cc.o
+.PHONY : util/independent_cache.o
+
+# target to build an object file
+util/independent_cache.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/independent_cache.cc.o
+.PHONY : util/independent_cache.cc.o
+
+util/independent_cache.i: util/independent_cache.cc.i
+.PHONY : util/independent_cache.i
+
+# target to preprocess a source file
+util/independent_cache.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/independent_cache.cc.i
+.PHONY : util/independent_cache.cc.i
+
+util/independent_cache.s: util/independent_cache.cc.s
+.PHONY : util/independent_cache.s
+
+# target to generate assembly for a file
+util/independent_cache.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/independent_cache.cc.s
+.PHONY : util/independent_cache.cc.s
+
 util/logging.o: util/logging.cc.o
 .PHONY : util/logging.o
 
@@ -2173,6 +2197,9 @@ help:
 	@echo "... util/histogram.o"
 	@echo "... util/histogram.i"
 	@echo "... util/histogram.s"
+	@echo "... util/independent_cache.o"
+	@echo "... util/independent_cache.i"
+	@echo "... util/independent_cache.s"
 	@echo "... util/logging.o"
 	@echo "... util/logging.i"
 	@echo "... util/logging.s"

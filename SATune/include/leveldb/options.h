@@ -7,6 +7,8 @@
 
 #include <cstddef>
 #include <string>
+#include <vector>
+#include <memory>
 
 #include "leveldb/export.h"
 #include "leveldb/compaction_options.h"
@@ -96,11 +98,23 @@ struct LEVELDB_EXPORT Options {
   // If null, leveldb will automatically create and use an 8MB internal cache.
   Cache* block_cache = nullptr;
 
+  std::vector<std::shared_ptr<Cache>> level_caches_;
+
   // Approximate size of user data packed per block.  Note that the
   // block size specified here corresponds to uncompressed data.  The
   // actual size of the unit read from disk may be smaller if
   // compression is enabled.  This parameter can be changed dynamically.
   size_t block_size = 4 * 1024;
+
+  // Enum specifying the type of ID used internally for identifying files or objects.
+  enum IDType : int {
+    kNeWID = 0,  // Use file_number as internal ID
+    kFileNumber = 1        // Use NeWID as internal ID
+  };
+
+  // Field to specify which ID type to use internally.
+  // Defaults to kNeWID (the way used in LevelDB).
+  IDType id_type = kNeWID;
 
   // Number of keys between restart points for delta encoding of keys.
   // This parameter can be changed dynamically.  Most clients should

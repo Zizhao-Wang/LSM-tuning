@@ -70,8 +70,6 @@ for i in {10..10}; do
                         rm -rf "${db_dir:?}/"*
                     fi
 
-
-
                     echo "base_num: $base_num"
                     echo "num_entries: $num_entries"
                     echo "value_size:$value_size"

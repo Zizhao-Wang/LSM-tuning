@@ -172,12 +172,17 @@ DEFINE_int64(write_buffer_size, 1048576,
 // (initialized to default value by "main")
 DEFINE_int64(max_file_size, 256 << 20, "");
 
+
 // Approximate size of user data packed per block (before compression.
 // (initialized to default value by "main")
 DEFINE_int32(block_size, 4096,  "");
 // Number of bytes to use as a cache of uncompressed data.
 // Negative means use default settings.
 DEFINE_int64(cache_size, 8 << 20, "");
+
+DEFINE_int32(cache_id_type, 0, "ID type used internally: 'file_number' or 'newid'");
+
+
 // Maximum number of files to keep open at the same time (use default if == 0)
 DEFINE_int32(open_files, 0,
              "Maximum number of files to keep open at the same time"
@@ -1424,6 +1429,9 @@ class Benchmark {
     options.block_cache = cache_;
     options.write_buffer_size = FLAGS_write_buffer_size;
     options.max_file_size = FLAGS_max_file_size;
+
+    options.id_type = (FLAGS_cache_id_type == 0) ? Options::kNeWID : Options::kFileNumber;
+
     options.block_size = FLAGS_block_size;
     if (FLAGS_comparisons) {
       options.comparator = &count_comparator_;

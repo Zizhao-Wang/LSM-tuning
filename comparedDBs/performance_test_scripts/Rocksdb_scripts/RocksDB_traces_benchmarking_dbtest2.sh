@@ -100,7 +100,7 @@ convert_to_billion_format() {
     fi
 }
 
-for i in {1..1}; do
+for i in {10..10}; do
     base_num=$(($billion * $i))
     dir1="${i}B_RocksDB_SATASSD_TwitterCluster30_Benchmarking"
     if [ ! -d "$dir1" ]; then
