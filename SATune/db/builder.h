@@ -25,6 +25,12 @@ class VersionEdit;
 Status BuildTable(const std::string& dbname, Env* env, const Options& options,
                   TableCache* table_cache, Iterator* iter, FileMetaData* meta);
 
+Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options& options,
+              TableCache* table_cache, Iterator* iter, FileMetaData* meta,double* variance_output);
+
+Status BuildTableWithDiscardCount(const std::string& dbname, Env* env, const Options& options,
+        TableCache* table_cache, Iterator* iter, FileMetaData* meta, int* discarded_count_output);
+
 }  // namespace leveldb
 
 #endif  // STORAGE_LEVELDB_DB_BUILDER_H_

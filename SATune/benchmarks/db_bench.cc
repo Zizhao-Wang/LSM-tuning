@@ -173,9 +173,8 @@ DEFINE_int64(write_buffer_size, 1048576,
 DEFINE_int64(max_file_size, 256 << 20, "");
 
 
-// Approximate size of user data packed per block (before compression.
-// (initialized to default value by "main")
-DEFINE_int32(block_size, 4096,  "");
+
+
 // Number of bytes to use as a cache of uncompressed data.
 // Negative means use default settings.
 DEFINE_int64(cache_size, 8 << 20, "");
@@ -255,15 +254,24 @@ DEFINE_int64(report_interval, 20, "report time interval");
 //   stop_writes_trigger               - L0 file count threshold to refuse new writes
 //   file_size_generated_in_compaction - Target file size (in bytes) produced per compaction
 // ----------------------------------------------------------------
-DEFINE_int32(compaction_trigger, 4,
-             "When #L0 files > this, trigger L0->L1 compaction");
-DEFINE_int32(slowdown_writes_trigger, 12,
-             "When #L0 files >= this, sleep write threads");
-DEFINE_int32(stop_writes_trigger, 20,
-             "When #L0 files >= this, refuse writes");
-DEFINE_int64(file_size_generated_in_compaction,
-             64LL * 1024 * 1024,
-             "Target file size (bytes) generated per compaction");
+// 为 CompactionOptions 中的各项定义命令行 flag
+DEFINE_int32(level0_compaction_trigger, 4,
+             "When number of L0 files > this, trigger L0->L1 compaction");
+DEFINE_int32(level0_slowdown_writes_trigger, 12,
+             "When number of L0 files >= this, slow down writes");
+DEFINE_int32(level0_stop_writes_trigger, 20,
+             "When number of L0 files >= this, stop writes");
+DEFINE_int64(file_size_generated_in_compaction, 64LL * 1024 * 1024,
+             "Bytes generated per compaction output file");
+DEFINE_int64(max_bytes_for_level1_base, 64LL * 1024 * 1024,
+             "Total data size allowed in L1 before compaction, base value");
+DEFINE_double(max_bytes_for_level1_multiplier, 10.0,
+              "Multiplier for max_bytes_for_levelN = base * multiplier^(N-1)");
+
+// Approximate size of user data packed per block (before compression.
+// (initialized to default value by "main")
+DEFINE_int64(block_size, 4LL * 1024,
+             "Block size (in bytes) used when writing SSTable blocks");
 // ================================================================
 // The above FLAGS are specific to the Compaction module and should not be modified or reused for other logic.
 // ================================================================
