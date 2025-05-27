@@ -150,6 +150,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       has_imm_(false),
       logfile_(nullptr),
       logfile_number_(0),
+      c0_adaptation_enabled_(raw_options.is_start_c0_tuning),
       log_(nullptr),
       seed_(0),
       tmp_batch_(new WriteBatch),
@@ -521,22 +522,27 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   Iterator* iter = mem->NewIterator();
   Log(options_.info_log, "Level-0 table #%llu: started",
       (unsigned long long)meta.number);
+  double table_variance=0.0;
 
   Status s;
   {
     mutex_.Unlock();
-    s = BuildTable(dbname_, env_, options_, table_cache_, iter, &meta);
+    s = BuildTableWithVariance(dbname_, env_, options_, table_cache_, iter, &meta, &table_variance);
     mutex_.Lock();
   }
 
   Log(options_.info_log, "Level-0 table #%llu: %lld bytes %s",
-      (unsigned long long)meta.number, (unsigned long long)meta.file_size,
-      s.ToString().c_str());
+      (unsigned long long)meta.number, (unsigned long long)meta.file_size, s.ToString().c_str());
   delete iter;
   pending_outputs_.erase(meta.number);
 
   // Note that if file_size is zero, the file has been deleted and
   // should not be added to the manifest.
+  l0variancestats.table_number++;
+  l0variancestats.variance = l0variancestats.variance+table_variance;
+  // fprintf(stderr,"the %lu-th table, The average variance is %.3f. The average variance is: %.3f\n",l0variancestats.table_number, 
+  //       (table_variance+l0variancestats.variance)/2.0, l0variancestats.variance/(double)l0variancestats.table_number);
+
   int level = 0;
   if (s.ok() && meta.file_size > 0) {
     const Slice min_user_key = meta.smallest.user_key();
@@ -600,6 +606,11 @@ void DBImpl::CompactMemTable() {
     RemoveObsoleteFiles();
   } else {
     RecordBackgroundError(s);
+  }
+  
+  if(versions_->IsL0NeedsCompaction()){
+    MaybeAdjustC0();
+    versions_->RecalculateCompactionScores();
   }
 }
 
@@ -935,285 +946,97 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
   return versions_->LogAndApply(compact->compaction->edit(), &mutex_);
 }
 
+// In db/db_impl.cc
 
-void DBImpl::loadKeysFromCSV(const std::string& filePath){
-    std::ifstream file(filePath);
-    std::string line;
-    // Skip the title line
-    std::getline(file, line);
-
-    size_t keysCount = 0; // 用于计数读取了多少个key
-
-    while (std::getline(file, line)) {
-      std::stringstream ss(line);
-      std::string keyStr, sizeStr;
-
-      uint64_t key;
-      size_t size;
-
-      std::getline(ss, keyStr, ',');
-      std::getline(ss, sizeStr, ',');
-      std::getline(ss, line, ',');
-
-      key = std::stoll(keyStr);
-      size = std::stoull(sizeStr);
-
-      char kye_string[1024];
-      char format[20];
-      std::snprintf(format, sizeof(format), "%%0%zullu", size);
-      std::snprintf(kye_string, sizeof(kye_string), format, (unsigned long long)key);
-      // std::string formattedKey(size+1, '\0');
-      // std::snprintf(&formattedKey[0], size + 1, format, (unsigned long long)key);
-      // keyStorage.push_back(formattedKey);
-      
-      Slice sliceKey(kye_string,size);
-      specialKeys.insert(sliceKey);
-
-      std::string str(sliceKey.data(), sliceKey.size());
-      uint64_t value = std::stoull(str);
-      std::fprintf(stdout, "%ld\n", value);
-
-      keysCount++; // 增加读取的key数量
+void DBImpl::RecordWriteStall(bool is_stop) {
+  if (c0_adaptation_enabled_) {
+    if (is_stop) {
+      stop_events_.fetch_add(1, std::memory_order_relaxed);
+    } else {
+      slowdown_events_.fetch_add(1, std::memory_order_relaxed);
+    }
   }
-
-  fprintf(stderr, "Loaded %zu hot keys from %s.\n", keysCount, filePath.c_str());
 }
 
-void DBImpl::load_keys_from_CSV(const std::string& filePath) {
-    std::ifstream file(filePath);
-    std::string line;
-    std::getline(file, line); // 跳过标题行
+// In db/db_impl.cc
 
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string keyStr;
-        uint64_t key;
+void DBImpl::MaybeAdjustC0() { // Renamed or V2
+  MutexLock l(&mutex_); // Ensure mutual exclusion
 
-        std::getline(ss, keyStr, ',');
-        key = std::stoull(keyStr);
+  // --- 1. Pre-checks ---
+  if (!c0_adaptation_enabled_ ) {
+    return; // Disabled or not L0 compaction
+  }
 
-        hot_keys.insert(key);
+    uint64_t now = env_->NowMicros();
+    // Cooldown check (as before)...
+
+    // --- 2. Gather State & Stall Check ---
+    int current_C0 = compaction_opts_atomic_.level0_compaction_trigger.load();
+    int new_C0 = current_C0;
+    const int slowdown_trigger = compaction_opts_atomic_.level0_slowdown_writes_trigger.load();
+    const int max_C0 = std::max(c0_adaptation_min_c0_, slowdown_trigger - c0_adaptation_headroom_);
+    const int min_C0 = c0_adaptation_min_c0_;
+
+    int64_t slows = slowdown_events_.exchange(0, std::memory_order_relaxed);
+    int64_t stops = stop_events_.exchange(0, std::memory_order_relaxed);
+    bool stalled = (stops > 0 || slows > 0);
+
+    if (stalled) {
+      new_C0 = std::max(min_C0, current_C0 - 1); // Decrease C0 on stall (conservatively by 1)
+      Log(options_.info_log,
+        "[C0 Adapt] Stalls detected (S:%ld, T:%ld). Decreasing C0 from %d to %d.",
+        slows, stops, current_C0, new_C0);
+      goto ApplyChanges; // Jump to apply changes
     }
 
-    fprintf(stderr, "Loaded %zu hot keys from %s \n", specialKeys.size(), filePath.c_str());
-}
-
-
-void DBImpl::batch_load_keys_from_CSV(const std::string& filePaths, const std::string& percentagesStr){
-  
-  std::vector<std::string> files;
-  std::vector<int> percentages;
-  std::stringstream ssFiles(filePaths);
-  std::stringstream ssPercentages(percentagesStr);
-  std::string item;
-
-  // 解析hot files路径
-  while (std::getline(ssFiles, item, ',')) {
-    files.push_back(item);
-    fprintf(stderr, "Parsed file: %s\n", item.c_str());
-  }
-
-  // 解析percentages
-  while (std::getline(ssPercentages, item, ',')) {
-    percentages.push_back(std::stoi(item));
-    fprintf(stdout, "Parsed percentage: %d\n", std::stoi(item));
-  }
-
-
-  if (files.size() != percentages.size()) {
-    fprintf(stderr,"Error: The number of files does not match the number of percentages.\n");
-    return;
-  }
-
-  for (size_t i = 0; i < files.size(); ++i) {
-    std::unordered_set<uint64_t> current_set;
-    std::ifstream file(files[i]);
-    std::string line;
-    std::getline(file, line); // Skip header
-
-    while (std::getline(file, line)) {
-      std::stringstream lineStream(line);
-      std::string keyStr;
-      uint64_t key;
-
-      std::getline(lineStream, keyStr, ',');
-      key = std::stoll(keyStr);
-      current_set.insert(key);
-    }
-
-    fprintf(stderr, "Loaded %zu hot keys from %s for %d%% \n", current_set.size(), files[i].c_str(), percentages[i]);
-    hot_keys_sets[percentages[i]] = current_set;
-  }
-}
-
-void DBImpl::batch_load_keys_from_CSV2(const std::string& filePaths, const std::string& percentagesStr){
-  
-  std::vector<std::string> files;
-  std::vector<int> percentages;
-  std::stringstream ssFiles(filePaths);
-  std::stringstream ssPercentages(percentagesStr);
-  std::string item;
-
-  // 解析hot files路径
-  while (std::getline(ssFiles, item, ',')) {
-    files.push_back(item);
-    fprintf(stderr, "Parsed file: %s\n", item.c_str());
-  }
-
-  // 解析percentages
-  while (std::getline(ssPercentages, item, ',')) {
-    percentages.push_back(std::stoi(item));
-    fprintf(stdout, "Parsed percentage: %d\n", std::stoi(item));
-  }
-
-
-  if (files.size() != percentages.size()) {
-    fprintf(stderr,"Error: The number of files does not match the number of percentages.\n");
-    return;
-  }
-
-  for (size_t i = 0; i < files.size(); ++i) {
-    std::unordered_map<uint64_t,int> current_map;
-    std::ifstream file(files[i]);
-    std::string line;
-    std::getline(file, line); // Skip header
-
-    while (std::getline(file, line)) {
-      std::stringstream lineStream(line);
-      std::string keyStr;
-      uint64_t key;
-
-      std::getline(lineStream, keyStr, ',');
-      key = std::stoll(keyStr);
-      current_map[key]=0;
-    }
-
-    fprintf(stderr, "Loaded %zu hot keys from %s for %d%% \n", current_map.size(), files[i].c_str(), percentages[i]);
-    hot_keys_map[percentages[i]] = current_map;
-  }
-}
-
-void DBImpl::testSpecialKeys() {
-
-    const std::string& testFilePath = "/home/jeff-wang/workloads/etc_output_file1.02.csv";
-    std::ifstream file(testFilePath);
-    std::string line;
-
-    std::getline(file, line);
-
-    size_t totalKeysTested = 0;
-    size_t specialKeysCount = 0;
-
-    fprintf(stderr, "Testing special keys from file: %s\n", testFilePath.c_str());
-
-    // uint64_t key = 1;
-    // char keyString[1024];
-    // std::snprintf(keyString, sizeof(keyString), "%016llu", (unsigned long long)key);
-    // Slice sliceKey(keyString, std::strlen(keyString));
-
-    // uint64_t key2 = 1 ;
-    // size_t size = 15;
-    // char kye_string[1024];
-    // char format[20];
-    // std::snprintf(format, sizeof(format), "%%0%zullu", size);
-    // std::snprintf(kye_string, sizeof(kye_string), format, (unsigned long long)key);
-    // std::string formattedKey(size+1, '\0');
-    // std::snprintf(&formattedKey[0], size + 1, format, (unsigned long long)key2);
-    // Slice sliceKey2(kye_string, formattedKey.size());
-    // Slice sliceKey2(kye_string, size);
-
-    // if(user_comparator()->Compare(sliceKey, sliceKey2) == 0){
-    //     fprintf(stdout, "Key %ld is special in comparator.\n", key2);
-    // } else {
-    //     fprintf(stdout, "Key %ld is not special in comparator.\n", key2);
-    // }
-
-    // if(sliceKey.compare(sliceKey2) == 0){
-    //     fprintf(stdout, "Key %ld is special in slice.\n", key2);
-    // } else {
-    //     fprintf(stdout, "Key %ld is not special in slice.\n", key2);
-    // }
-
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string keyStr;
-
-        uint64_t key;
-        size_t size = 1024; 
-
-        std::getline(ss, keyStr, ',');
-        std::getline(ss, line, ',');
-        
-        key = std::stoll(keyStr);
-        char keyString[1024];
-        std::snprintf(keyString, sizeof(keyString), "%054llu", (unsigned long long)key);
-
-        if (isSpecialKey(Slice(keyString, std::strlen(keyString)))) {
-            fprintf(stdout, "Key %ld is special.\n", key); 
+    // --- 3. T_default Management ---
+    uint64_t t_default = default_total_keys_C0_.load(std::memory_order_relaxed);
+    if (t_default == 0) {
+        if (current_C0 == min_C0) {
+            t_default = compact->total_keys_in;
+            default_total_keys_C0_.store(t_default, std::memory_order_relaxed);
+            Log(options_.info_log, "[C0 Adapt] Set T_default to %lu at C0=%d.",
+                t_default, current_C0);
         } else {
-            fprintf(stdout, "Key %ld is not special.\n", key);
+            Log(options_.info_log, "[C0 Adapt] Waiting for C0=%d to set T_default (current is %d).",
+                min_C0, current_C0);
         }
-        totalKeysTested++;
-        fflush(stdout);
-        exit(0);
+        goto ApplyChanges; // Don't adjust C0 on the first run or if not at base C0
     }
-    fprintf(stderr, "Test complete. %zu out of %zu keys tested are special.\n", specialKeysCount, totalKeysTested);
-    fflush(stderr);
-    
-}
 
+    // --- 4. Decision Logic (Based on T_default & Unique Keys) ---
+    uint64_t total_in = compact->total_keys_in;
+    uint64_t unique_in = compact->unique_keys_in;
+    double discard_ratio = (total_in > 0) ?
+        static_cast<double>(total_in - unique_in) / total_in : 0.0;
 
-void DBImpl::test_hot_keys() {
-  const std::string& testFilePath = "/home/jeff-wang/workloads/etc_output_file1.02.csv";
-    std::ifstream file(testFilePath);
-    std::string line;
-    std::getline(file, line); 
+    // We only increase if discard ratio is reasonably high AND unique keys < T_default
+    if (discard_ratio < 0.10) { // Threshold for "low skew"
+        Log(options_.info_log, "[C0 Adapt] Low discard (%.2f). Holding C0 at %d.",
+            discard_ratio, current_C0);
+    } else if (unique_in >= t_default) {
+        Log(options_.info_log, "[C0 Adapt] Unique keys (%lu) >= T_default (%lu). Holding C0 at %d.",
+            unique_in, t_default, current_C0);
+    } else {
+        // Conditions met: High discard AND U_N < T_default AND no stalls
+        // Increase C0 by 1 (as per "每次增加一个 file")
+        new_C0 = current_C0 + 1;
+        new_C0 = std::min(new_C0, max_C0); // Don't exceed max C0
 
-    size_t totalKeysTested = 0;
-    size_t specialKeysCount = 0;
-
-    while (std::getline(file, line)) {
-        std::stringstream ss(line);
-        std::string keyStr;
-        uint64_t key;
-
-        std::getline(ss, keyStr, ',');
-        key = std::stoll(keyStr);
-
-        if (is_hot_key(key)) {
-            // fprintf(stdout, "Key %ld is special.\n", key);
-            specialKeysCount++;
+        if (new_C0 > current_C0) {
+            Log(options_.info_log, "[C0 Adapt] Increasing C0 from %d to %d (U:%lu < T:%lu, D:%.2f).",
+                current_C0, new_C0, unique_in, t_default, discard_ratio);
         } else {
-            fprintf(stdout, "Key %ld is not hot.\n", key);
+            Log(options_.info_log, "[C0 Adapt] Conditions met, but C0 at max (%d). Holding.", current_C0);
         }
-        totalKeysTested++;
     }
-    fprintf(stderr, "Tested %zu keys, %zu are hot.\n", totalKeysTested, specialKeysCount);
-}
 
-
-
-std::vector<int> DBImpl::GetLevelPercents() {
-    std::vector<int> percents;
-    for (const auto& percentage_set : hot_keys_sets) {
-        percents.push_back(percentage_set.first);
+    // --- 5. Apply Changes ---
+    if (new_C0 != current_C0) {
+        compaction_opts_atomic_.level0_compaction_trigger.store(new_C0, std::memory_order_relaxed);
     }
-    return percents;
-  }
-
-
-void  DBImpl::initialize_level_hotcoldstats(){
-  std::vector<int> percents = GetLevelPercents(); // 获取所有可能的百分比定义
-  level_hot_cold_stats.resize(config::kNumLevels); // 根据level数量初始化向量大小
-
-    for (unsigned i = 0; i < level_hot_cold_stats.size(); ++i) 
-    {
-      for (size_t j = 0; j < percents.size(); ++j) 
-      {
-        level_hot_cold_stats[i].insert(std::make_pair(percents[j], LevelHotColdStats())) ; // 为每个百分比初始化LevelHotColdStats对象
-      }
-    }
-    fprintf(stderr,"initialize %zu objects(LevelHotColdStats) for %zu levels\n", percents.size(),level_hot_cold_stats.size());
+    last_c0_adjustment_time_.store(now, std::memory_order_relaxed); // Update time regardless
 }
 
 
@@ -1266,17 +1089,6 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   bool has_current_user_key = false;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
 
-  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
-
-  std::map<int,uint64_t> hot_data_counts; 
-  std::map<int,uint64_t> cold_data_counts;
-  uint64_t total_data_count = 0;
-  std::vector<int> percentages1 = GetLevelPercents();
-  for (int percentage : percentages1) {
-    hot_data_counts[percentage] = 0;
-    cold_data_counts[percentage] = 0;
-  }
-  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
 
   while (input->Valid() && !shutting_down_.load(std::memory_order_acquire)) {
     // Prioritize immutable compaction work
@@ -1293,24 +1105,6 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     }
 
     Slice key = input->key();
-    
-    //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
-
-    bool is_hot_data1 = false;
-    if(versions_->compute_hot_cold_range(key, hot_range, is_hot_data1)){
-      std::string str(key.data(), key.size());
-      uint64_t key_number = std::stoull(str);
-       for (int i=0;i<percentages1.size();i++) {
-        // fprintf(stderr,"percentage: %d in docompaction work!\n", percentage);
-        if (is_hot_key(percentages1[i], key_number)) {
-          hot_data_counts[percentages1[i]]++; 
-        } else {
-          cold_data_counts[percentages1[i]]++;
-        }
-      }
-      total_data_count++;
-    } 
-    //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
 
     if (compact->compaction->ShouldStopBefore(key) &&
         compact->builder != nullptr) {
@@ -1416,15 +1210,6 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     for (int i = 0; i < compact->compaction->num_input_files(which); i++) {
       stats.bytes_read += compact->compaction->input(which, i)->file_size;
     }
-
-    //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
-    // if(which == 0){
-    //   level_stats_[compact->compaction->level()].bytes_read += stats.bytes_read;
-    //   init_level_bytes_read = stats.bytes_read;
-    // }else if(which == 1){
-    //   level_stats_[compact->compaction->level() + 1].bytes_read += (stats.bytes_read - init_level_bytes_read);
-    // }
-    //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
   }
 
   for (size_t i = 0; i < compact->outputs.size(); i++) {
@@ -1434,80 +1219,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   mutex_.Lock();
   stats_[compact->compaction->level() + 1].Add(stats);
   level_stats_[compact->compaction->level() + 1].bytes_read += stats.bytes_read;
-
-  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
-
-  // double hot_data_percentage = (double)hot_data_count / total_data_count;
-  // double cold_data_percentage = (double)cold_data_count / total_data_count;
-
-  // level_stats_[compact->compaction->level()].bytes_read_hot += init_level_bytes_read*hot_data_percentage;
-  // level_stats_[compact->compaction->level()].bytes_read_cold += init_level_bytes_read*cold_data_percentage;
-
-  // uint64_t participate_level_bytes_read = stats.bytes_read - init_level_bytes_read;
-  // level_stats_[compact->compaction->level() + 1].bytes_read_hot += participate_level_bytes_read*hot_data_percentage;
-  // level_stats_[compact->compaction->level() + 1].bytes_read_cold += participate_level_bytes_read*cold_data_percentage;
-
   level_stats_[compact->compaction->level() + 1].bytes_written += stats.bytes_written;
-  // level_stats_[compact->compaction->level() + 1].bytes_written_hot += stats.bytes_written*hot_data_percentage;
-  // level_stats_[compact->compaction->level() + 1].bytes_written_cold += stats.bytes_written*cold_data_percentage;
-  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
-
-
-  for (int i=0;i<percentages1.size();i++) {
-    int64_t hot_count = hot_data_counts[percentages1[i]];
-    int64_t cold_count = cold_data_counts[percentages1[i]];
-
-    assert(total_data_count == hot_count + cold_count); 
-    // assert(total_data_count != 0);
-
-    // double hot_data_percentage = total_data_count > 0 ? (double)hot_count / total_data_count : 0;
-    // double cold_data_percentage = total_data_count > 0 ? (double)cold_count / total_data_count : 0;
-
-    // auto& levelStatsMap = level_hot_cold_stats[compact->compaction->level()];
-    // if (levelStatsMap.find(perc) == levelStatsMap.end()) {
-    //     levelStatsMap[perc] = LevelHotColdStats(); // 如果没有，就初始化一个
-    // }
-    // // 更新当前level的hot和cold数据读取统计
-    // levelStatsMap[perc].bytes_read_hot += init_level_bytes_read * hot_data_percentage;
-    // levelStatsMap[perc].bytes_read_cold += init_level_bytes_read * cold_data_percentage;
-
-    // auto& nextLevelStatsMap = level_hot_cold_stats[compact->compaction->level() + 1];
-    // if (nextLevelStatsMap.find(perc) == nextLevelStatsMap.end()) {
-    //     nextLevelStatsMap[perc] = LevelHotColdStats(); // 如果没有，就初始化一个
-    //     fprintf(stderr,"initialize a new LevelHotColdStats object for level %d and percentage %d\n", compact->compaction->level() + 1, perc);
-    //     fflush(stderr);
-    // }
-    // const double epsilon = 2; 
-    // 更新参与下一级压缩的level的hot和cold数据读取统计
-    // nextLevelStatsMap[perc].bytes_read_hot += hot_count;
-    // nextLevelStatsMap[perc].bytes_read_cold += cold_count;
-    level_hot_cold_stats[compact->compaction->level() + 1][percentages1[i]].bytes_written_hot += hot_count;
-    level_hot_cold_stats[compact->compaction->level() + 1][percentages1[i]].bytes_written_cold += cold_count;
-    level_hot_cold_stats[compact->compaction->level() + 1][percentages1[i]].bytes_read_hot += hot_count;
-    level_hot_cold_stats[compact->compaction->level() + 1][percentages1[i]].bytes_read_cold += cold_count;
-    level_hot_cold_stats[compact->compaction->level() + 1][percentages1[i]].total_count_hc += total_data_count;
-    // fprintf(stdout,"level:%u total_:%ld hot_count:%ld cold_count:%ld sum:%ld percentages1[i]:%d\n", compact->compaction->level() + 1, total_data_count,hot_count, cold_count,hot_count+cold_count, percentages1[i]);
-    // assert(level_hot_cold_stats[compact->compaction->level() + 1][perc].bytes_written_hot!=0 && hot_count!=0);
-    // assert(level_hot_cold_stats[compact->compaction->level() + 1][perc].bytes_written_cold!=0 && hot_count!=0);
-    // assert(level_hot_cold_stats[compact->compaction->level() + 1][perc].bytes_read_hot!=0);
-    // assert(level_hot_cold_stats[compact->compaction->level() + 1][perc].bytes_read_cold!=0);
-    // fprintf(stdout,"bytes_written_hot: %ld hot_count:%ld, bytes_read_cold: %ld in compaction cold_count: %ld level:%u prec:%d\n", level_hot_cold_stats[compact->compaction->level() + 1][perc].bytes_written_hot, hot_count, level_hot_cold_stats[compact->compaction->level() + 1][perc].bytes_read_cold, cold_count, compact->compaction->level() + 1, perc);
-    // double read_diff = fabs((nextLevelStatsMap[perc].bytes_read_hot + nextLevelStatsMap[perc].bytes_read_cold) - stats.bytes_read);
-    // fprintf(stdout,"==========\n\n");
-    // fprintf(stdout, "hot data: %ld, cold data: %ld, total data: %ld\n", hot_count, cold_count, total_data_count);
-    // fprintf(stdout, "bytes_read_hot: %f, bytes_read_cold: %f, stats.bytes_read: %ld\n", stats.bytes_read * hot_data_percentage, stats.bytes_read * cold_data_percentage, stats.bytes_read);
-    // fprintf(stdout,"hot_data_percentage: %f, cold_data_percentage: %f read_diff: %f\n", hot_data_percentage, cold_data_percentage, read_diff);
-    // assert(read_diff < epsilon);
-    
-    // 更新下一级level的写入统计（假设压缩导致的写入均为hot数据）;
-    // nextLevelStatsMap[perc].bytes_written_hot += hot_count;
-    // nextLevelStatsMap[perc].bytes_written_cold += cold_count;
-    // double written_diff = fabs((nextLevelStatsMap[perc].bytes_written_hot + nextLevelStatsMap[perc].bytes_written_cold) - stats.bytes_written);
-    // fprintf(stdout,"hot_data_percentage: %f, cold_data_percentage: %f read: %f\n", hot_data_percentage, cold_data_percentage, read_diff);
-    // assert(written_diff < epsilon);
-  }
-  // fprintf(stdout,"==========\n\n");
-  // fflush(stdout);
 
   if (status.ok()) {
     status = InstallCompactionResults(compact);
@@ -1806,13 +1518,14 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       s = bg_error_;
       break;
     } else if (allow_delay && versions_->NumLevelFiles(0) >=
-                                compaction_opts_atomic_.level0_compaction_trigger.load()) {
+                                compaction_opts_atomic_.level0_slowdown_writes_trigger.load()) {
       // We are getting close to hitting a hard limit on the number of
       // L0 files.  Rather than delaying a single write by several
       // seconds when we hit the hard limit, start delaying each
       // individual write by 1ms to reduce latency variance.  Also,
       // this delay hands over some CPU to the compaction thread in
       // case it is sharing the same core as the writer.
+      RecordWriteStall(false);  
       mutex_.Unlock();
       env_->SleepForMicroseconds(1000);
       allow_delay = false;  // Do not delay a single write more than once
@@ -1828,6 +1541,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       background_work_finished_signal_.Wait();
     } else if (versions_->NumLevelFiles(0) >= compaction_opts_atomic_.level0_stop_writes_trigger.load()) {
       // There are too many level-0 files.
+      RecordWriteStall(true);  
       Log(options_.info_log, "Too many L0 files; waiting...\n");
       background_work_finished_signal_.Wait();
     } else {

@@ -173,6 +173,10 @@ DEFINE_int64(write_buffer_size, 1048576,
 DEFINE_int64(max_file_size, 256 << 20, "");
 
 
+// We use 'start_c0_tuning' as the flag name, following gflags conventions.
+// The default value is set to 'true' as in your variable.
+// Add a helpful description for the flag.
+DEFINE_bool(start_c0_tuning, true, "Enable or disable C0 tuning at start.");
 
 
 // Number of bytes to use as a cache of uncompressed data.
@@ -430,180 +434,7 @@ static void AppendWithSpace(std::string* str, Slice msg) {
   str->append(msg.data(), msg.size());
 }
 
-// class Stats {
-//  private:
-//   double start_;
-//   double finish_;
-//   double seconds_;
-//   uint64_t done_;
-//   int next_report_;
-//   int64_t bytes_;
-//   double last_op_finish_;
-//   uint64_t last_report_finish_;
-//   Histogram hist_;
-//   std::string message_;
 
-//  public:
-//   Stats() { Start(); }
-
-//   void Start() {
-//     next_report_ = 100;
-//     hist_.Clear();
-//     done_ = 0;
-//     bytes_ = 0;
-//     seconds_ = 0;
-//     message_.clear();
-//     start_ = finish_ = last_op_finish_ = g_env->NowMicros();
-//   }
-
-//   void Merge(const Stats& other) {
-//     hist_.Merge(other.hist_);
-//     done_ += other.done_;
-//     bytes_ += other.bytes_;
-//     seconds_ += other.seconds_;
-//     if (other.start_ < start_) start_ = other.start_;
-//     if (other.finish_ > finish_) finish_ = other.finish_;
-
-//     // Just keep the messages from one thread
-//     if (message_.empty()) message_ = other.message_;
-//   }
-
-//   void Stop() {
-//     finish_ = g_env->NowMicros();
-//     seconds_ = (finish_ - start_) * 1e-6;
-//   }
-
-//   void AddMessage(Slice msg) { AppendWithSpace(&message_, msg); }
-
-//   void PrintSpeed() {
-
-//     uint64_t now = Env::Default()->NowMicros();
-//     int64_t usecs_since_last = now - last_report_finish_;
-
-//     std::string cur_time = Env::Default()->TimeToString(now/1000000);
-//     fprintf(stdout,
-//             "%s ... thread %d: (%llu,%llu) ops and "
-//             "(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
-//             cur_time.c_str(), 
-//             id_,
-//             done_ - last_report_done_, done_,
-//             (done_ - last_report_done_) /
-//             (usecs_since_last / 1000000.0),
-//             done_ / ((now - start_) / 1000000.0),
-//             (now - last_report_finish_) / 1000000.0,
-//             (now - start_) / 1000000.0);
-//     last_report_finish_ = now;
-//     last_report_done_ = done_;
-
-//     // std::string io_res = GetStdoutFromCommand("echo q| htop -u hanson | aha --line-fix | html2text -width 999 | grep -v 'F1Help' | grep -v 'xml version=' | grep kv_bench ");
-//     // Log(io_log, " --- %s\n%s", cur_time.c_str(), io_res.c_str());
-//     fflush(stdout);
-//   }
-
-//   void FinishedSingleOp() {
-//     if (FLAGS_histogram) {
-//       double now = g_env->NowMicros();
-//       double micros = now - last_op_finish_;
-//       hist_.Add(micros);
-//       if (micros > 20000) {
-//         std::fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
-//         std::fflush(stderr);
-//       }
-//       last_op_finish_ = now;
-//     }
-
-//     done_++;
-//     if (done_ >= next_report_) {
-//       if (next_report_ < 1000)
-//         next_report_ += 100;
-//       else if (next_report_ < 5000)
-//         next_report_ += 500;
-//       else if (next_report_ < 10000)
-//         next_report_ += 1000;
-//       else if (next_report_ < 50000)
-//         next_report_ += 5000;
-//       else if (next_report_ < 100000)
-//         next_report_ += 10000;
-//       else if (next_report_ < 500000)
-//         next_report_ += 50000;
-//       else
-//         next_report_ += 100000;
-
-//       if((FLAGS_stats_interval != -1) && done_ % FLAGS_stats_interval == 0) {
-//         PrintSpeed(); 
-//           std::string stats;
-//           if (!db->GetProperty("leveldb.stats", &stats)) {
-//             stats = "(failed)";
-//           }
-//           fprintf(stdout, "\n%s\n", stats.c_str());
-//       }
-      
-
-//       std::fprintf(stderr, "... finished %lu ops%30s\r", done_, "");
-//       std::fflush(stderr);
-//     }
-//   }
-
-//   void AddBytes(int64_t n) { bytes_ += n; }
-
-//   void Report(const Slice& name) {
-//     // Pretend at least one op was done in case we are running a benchmark
-//     // that does not call FinishedSingleOp().
-//     if (done_ < 1) done_ = 1;
-
-//     std::string extra;
-//     if (bytes_ > 0) {
-//       // Rate is computed on actual elapsed time, not the sum of per-thread
-//       // elapsed times.
-//       double elapsed = (finish_ - start_) * 1e-6;
-//       char rate[100];
-//       std::snprintf(rate, sizeof(rate), "%6.1f MB/s",
-//                     (bytes_ / 1048576.0) / elapsed);
-//       extra = rate;
-//     }
-//     AppendWithSpace(&extra, message_);
-
-//     std::fprintf(stdout, "%-12s : %11.3f micros/op;%s%s\n",
-//                  name.ToString().c_str(), seconds_ * 1e6 / done_,
-//                  (extra.empty() ? "" : " "), extra.c_str());
-//     std::fprintf(stdout, "%lu operations have been finished (%.3f MB data have been written into db)\n", done_, bytes_/1048576.0);
-//     if (FLAGS_histogram) {
-//       std::fprintf(stdout, "Microseconds per op:\n%s\n",
-//                    hist_.ToString().c_str());
-//     }
-//     std::fflush(stdout);
-//   }
-// };
-
-// // State shared by all concurrent executions of the same benchmark.
-// struct SharedState {
-//   port::Mutex mu;
-//   port::CondVar cv GUARDED_BY(mu);
-//   int total GUARDED_BY(mu);
-
-//   // Each thread goes through the following states:
-//   //    (1) initializing
-//   //    (2) waiting for others to be initialized
-//   //    (3) running
-//   //    (4) done
-
-//   int num_initialized GUARDED_BY(mu);
-//   int num_done GUARDED_BY(mu);
-//   bool start GUARDED_BY(mu);
-
-//   SharedState(int total)
-//       : cv(&mu), total(total), num_initialized(0), num_done(0), start(false) {}
-// };
-
-// // Per-thread state for concurrent executions of the same benchmark.
-// struct ThreadState {
-//   int tid;      // 0..n-1 when running in n threads
-//   Random rand;  // Has different seeds for different threads
-//   Stats stats;
-//   SharedState* shared;
-
-//   ThreadState(int index, int seed) : tid(index), rand(seed), shared(nullptr) {}
-// };
 enum OperationType : int {
   kWrite = 0,
   kPointQuery,
@@ -939,12 +770,10 @@ struct ThreadState {
   Trace* read_trace;
   RandomGenerator gen;
   ThreadState(int index)
-      : tid(index),
-        rand(1000 + index),
-        stats(index) {
+      : tid(index), rand(1000 + index), stats(index) {
         trace = new TraceUniform(1000 + index * 345);
         read_trace = new TraceZipfian(1000 + index * 345);
-  }
+      }
 };
 
 
@@ -1139,7 +968,7 @@ class Benchmark {
     PrintHeader();
     // std::fprintf(stderr,"open dbs in Run()\n");
     // fflush(stderr);
-    Open();
+    // Open();
 
     const char* benchmarks = FLAGS_benchmarks.c_str();
     while (benchmarks != nullptr) {
@@ -1291,6 +1120,9 @@ class Benchmark {
           fflush(stderr);
           Open();
         }
+      }else{
+        if (db_ == nullptr) 
+          Open(); 
       }
 
       if (method != nullptr) {
@@ -1453,6 +1285,16 @@ class Benchmark {
     options.hot_file_path = FLAGS_hot_file;
     options.compactiontriggered_output_file = FLAGS_compactiontriggered_file;
     options.percentages = FLAGS_percentages;
+
+    options.is_start_c0_tuning = FLAGS_start_c0_tuning;
+
+    options.compaction_opts.block_size = FLAGS_block_size;
+    options.compaction_opts.file_size_generated_in_compaction = FLAGS_file_size_generated_in_compaction;
+    options.compaction_opts.level0_compaction_trigger = FLAGS_level0_compaction_trigger;
+    options.compaction_opts.level0_slowdown_writes_trigger = FLAGS_level0_slowdown_writes_trigger;
+    options.compaction_opts.level0_stop_writes_trigger = FLAGS_level0_stop_writes_trigger;
+    options.compaction_opts.max_bytes_for_level1_base = FLAGS_max_bytes_for_level1_base;
+    options.compaction_opts.max_bytes_for_level1_multiplier = FLAGS_max_bytes_for_level1_multiplier;
 
     std::fprintf(stderr, "open dbs:in Open()\n");
     fflush(stderr);

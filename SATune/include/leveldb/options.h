@@ -50,6 +50,8 @@ struct LEVELDB_EXPORT Options {
   // comparator provided to previous open calls on the same DB.
   const Comparator* comparator;
 
+  bool is_start_c0_tuning = true;
+
   // If true, the database will be created if it is missing.
   bool create_if_missing = false;
 
@@ -174,7 +176,6 @@ struct LEVELDB_EXPORT Options {
 
   // 新增：Compaction 相关参数集合
   CompactionOptions compaction_opts;
-
   
 };
 

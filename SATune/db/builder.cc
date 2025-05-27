@@ -83,14 +83,18 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
 
 
 Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options& options,
-              TableCache* table_cache, Iterator* iter, FileMetaData* meta,double* variance_output) {
+              TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output) {
   Status s;
   meta->file_size = 0;
   iter->SeekToFirst();
 
   std::string fname = TableFileName(dbname, meta->number);
-  std::map<std::string, int> key_frequencies; // 用于存储 Key 的频率
-  int total_keys = 0; // 总 Key 的数量 (包括重复)
+  int total_keys = 0;
+  int unique_keys = 1;
+  int unique_key_num = 0;
+  std::string last_user_key_storage; // 用 string 来安全存储上一个唯一 Key 的数据
+  last_user_key_storage.assign(iter->key().data(), iter->key().size()-8);
+  std::vector<int> frequency_vector;
 
   if (iter->Valid()) {
     WritableFile* file;
@@ -106,10 +110,22 @@ Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options
       key = iter->key();
       builder->Add(key, iter->value());
 
-      // --- 计算频率 ---
-      key_frequencies[key.ToString()]++; // 使用 ToString() 确保 key 被复制
       total_keys++;
+      unique_key_num++;
+
+      // --- 计算频率 ---
+      // 1. 提取 User Key (不创建 string)
+      //    (再次提醒：确认 key.size() - 8 是正确的 InternalKey 格式)
+      Slice current_user_key(key.data(), key.size() - 8);
+      if (Slice(last_user_key_storage).compare(current_user_key) != 0) {
+        unique_keys++;
+        // 3. 只有当 Key 变化时，才更新 string 存储 (创建/复制 string)
+        last_user_key_storage.assign(current_user_key.data(), current_user_key.size());
+        frequency_vector.emplace_back(unique_key_num);
+        unique_key_num = 1;
+      }
       // --- 结束计算 ---
+
     }
     if (!key.empty()) {
       meta->largest.DecodeFrom(key);
@@ -147,16 +163,16 @@ Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options
     s = iter->status();
   }
 
-    // --- 计算方差 ---
+  // --- 计算方差 ---
   *variance_output = 0.0;
-  if (s.ok() && !key_frequencies.empty()) {
+  if (s.ok() && !frequency_vector.empty()) {
     double sum_freq = 0.0;
     double sum_freq_sq = 0.0;
-    int unique_keys = key_frequencies.size();
+    int unique_keys = frequency_vector.size();
 
-    for (const auto& pair : key_frequencies) {
-      sum_freq += pair.second; // pair.second 是频率
-      sum_freq_sq += std::pow(pair.second, 2);
+    for (const auto& pair : frequency_vector) {
+      sum_freq += pair; // pair.second 是频率
+      sum_freq_sq += std::pow(pair, 2);
     }
 
     // 注意：这里的 total_keys 应该等于 sum_freq

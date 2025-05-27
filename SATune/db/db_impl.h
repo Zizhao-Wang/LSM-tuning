@@ -207,6 +207,43 @@ class DBImpl : public DB {
                                 SequenceNumber* latest_snapshot,
                                 uint32_t* seed);
 
+  // Structure to hold key frequency variance statistics for an L0 file.
+  struct L0VarianceStats {
+    double variance = 0.0;
+    int64_t table_number=0;
+    int64_t unique_keys = 0; // Optional: Store the number of unique keys.
+    int64_t total_keys = 0;  // Optional: Store the total number of keys.
+    int64_t discarded_keys = 0; // Number of key versions that are not the latest user key.
+    int64_t default_totalkeys_in_C0 = 0;
+
+
+    // Default constructor.
+    L0VarianceStats() = default;
+
+    // Parameterized constructor.
+    L0VarianceStats(double v, int64_t uk, int64_t tk)
+    :variance(v), unique_keys(uk), total_keys(tk) {}
+
+    // Calculates the ratio of discarded keys to total keys.
+    double discard_ratio() const {
+      return (total_keys > 0) ? static_cast<double>(discarded_keys) / total_keys: 0.0;
+    }
+
+  };
+  L0VarianceStats l0variancestats GUARDED_BY(mutex_);
+
+  bool c0_adaptation_enabled_;
+
+  std::atomic<int64_t> slowdown_events_{0};
+  std::atomic<int64_t> stop_events_{0};
+  std::atomic<int> adjustment_aggressiveness_{1};
+  std::atomic<uint64_t> last_c0_adjustment_time_{0};
+
+  // --- C0 Adaptation ---
+  void MaybeAdjustC0();
+  void RecordWriteStall(bool is_stop);
+
+
   Status NewDB();
 
   // Recover the descriptor from persistent storage.  May do a significant

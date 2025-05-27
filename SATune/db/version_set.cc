@@ -1108,6 +1108,11 @@ void VersionSet::MarkFileNumberUsed(uint64_t number) {
   }
 }
 
+void VersionSet::RecalculateCompactionScores() {
+  assert(current_ != nullptr);
+  Finalize(current_);
+}
+
 void VersionSet::Finalize(Version* v) {
   // Precomputed best level for next compaction
   int best_level = -1;

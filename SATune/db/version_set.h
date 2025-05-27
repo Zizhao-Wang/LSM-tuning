@@ -258,6 +258,12 @@ class VersionSet {
     return (v->compaction_score_ >= 1) || (v->file_to_compact_ != nullptr);
   }
 
+  // Returns true iff some level needs a compaction.
+  bool IsL0NeedsCompaction() const {
+    Version* v = current_;
+    return (v->compaction_score_ >= 1) && (v->compaction_level_ == 0);
+  }
+
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.
   void AddLiveFiles(std::set<uint64_t>* live);
@@ -272,6 +278,8 @@ class VersionSet {
     char buffer[100];
   };
   const char* LevelSummary(LevelSummaryStorage* scratch) const;
+
+  void RecalculateCompactionScores();
 
   //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
   void set_overlap_range(const std::vector<FileMetaData*>& inputs1,
