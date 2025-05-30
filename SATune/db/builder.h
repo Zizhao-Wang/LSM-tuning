@@ -26,7 +26,7 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
                   TableCache* table_cache, Iterator* iter, FileMetaData* meta);
 
 Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options& options,
-              TableCache* table_cache, Iterator* iter, FileMetaData* meta,double* variance_output);
+    TableCache* table_cache, Iterator* iter, FileMetaData* meta,double* variance_output, int64_t* tlb_unique, int64_t* table_total);
 
 Status BuildTableWithDiscardCount(const std::string& dbname, Env* env, const Options& options,
         TableCache* table_cache, Iterator* iter, FileMetaData* meta, int* discarded_count_output);

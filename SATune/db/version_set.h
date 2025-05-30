@@ -281,6 +281,18 @@ class VersionSet {
 
   void RecalculateCompactionScores();
 
+  // === 调试接口：获取 current_ 上的 compaction 信息 ===
+  // 当前 compaction 级别
+  int  GetCurrentCompactionLevel() const{
+    assert(current_ != nullptr);
+    return current_->compaction_level_;
+  }
+  // 当前 compaction 分数
+  double GetCurrentCompactionScore() const{
+    assert(current_ != nullptr);
+  return current_->compaction_score_;
+  }
+
   //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
   void set_overlap_range(const std::vector<FileMetaData*>& inputs1,
                  const std::vector<FileMetaData*>& inputs2);

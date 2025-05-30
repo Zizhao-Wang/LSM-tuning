@@ -83,7 +83,7 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
 
 
 Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options& options,
-              TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output) {
+  TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total) {
   Status s;
   meta->file_size = 0;
   iter->SeekToFirst();
@@ -164,6 +164,8 @@ Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options
   }
 
   // --- 计算方差 ---
+  *table_total = total_keys;
+  *tlb_unique = unique_keys;
   *variance_output = 0.0;
   if (s.ok() && !frequency_vector.empty()) {
     double sum_freq = 0.0;

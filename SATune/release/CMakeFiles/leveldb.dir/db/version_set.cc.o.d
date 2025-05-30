@@ -194,7 +194,16 @@ CMakeFiles/leveldb.dir/db/version_set.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./util/logging.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_edit.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/db_compaction_options.h \
- /usr/include/c++/11/atomic \
+ /usr/include/c++/11/atomic /usr/include/c++/11/cmath /usr/include/math.h \
+ /usr/include/x86_64-linux-gnu/bits/math-vector.h \
+ /usr/include/x86_64-linux-gnu/bits/libm-simd-decl-stubs.h \
+ /usr/include/x86_64-linux-gnu/bits/flt-eval-method.h \
+ /usr/include/x86_64-linux-gnu/bits/fp-logb.h \
+ /usr/include/x86_64-linux-gnu/bits/fp-fast.h \
+ /usr/include/x86_64-linux-gnu/bits/mathcalls-helper-functions.h \
+ /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
+ /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
+ /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/filename.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_reader.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_format.h \

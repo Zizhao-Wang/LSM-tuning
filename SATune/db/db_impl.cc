@@ -147,6 +147,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       background_work_finished_signal_(&mutex_),
       mem_(nullptr),
       imm_(nullptr),
+      current_stats_ptr_(nullptr),
       has_imm_(false),
       logfile_(nullptr),
       logfile_number_(0),
@@ -523,11 +524,12 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   Log(options_.info_log, "Level-0 table #%llu: started",
       (unsigned long long)meta.number);
   double table_variance=0.0;
-
+  int64_t table_unique=0;
+  int64_t table_total_keys=0;
   Status s;
   {
     mutex_.Unlock();
-    s = BuildTableWithVariance(dbname_, env_, options_, table_cache_, iter, &meta, &table_variance);
+    s = BuildTableWithVariance(dbname_, env_, options_, table_cache_, iter, &meta, &table_variance, &table_unique, &table_total_keys);
     mutex_.Lock();
   }
 
@@ -538,10 +540,8 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
 
   // Note that if file_size is zero, the file has been deleted and
   // should not be added to the manifest.
-  l0variancestats.table_number++;
-  l0variancestats.variance = l0variancestats.variance+table_variance;
-  // fprintf(stderr,"the %lu-th table, The average variance is %.3f. The average variance is: %.3f\n",l0variancestats.table_number, 
-  //       (table_variance+l0variancestats.variance)/2.0, l0variancestats.variance/(double)l0variancestats.table_number);
+
+
 
   int level = 0;
   if (s.ok() && meta.file_size > 0) {
@@ -554,6 +554,30 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
                   meta.largest);
   }
 
+  if(level==0){
+
+    if(current_stats_ptr_ == nullptr){
+      current_stats_ptr_ = &l0variancestats;
+    } 
+
+    current_stats_ptr_->table_number++;
+    current_stats_ptr_->variance = current_stats_ptr_->variance+table_variance;
+    current_stats_ptr_->unique_keys += table_unique;
+    current_stats_ptr_->total_keys += table_total_keys;
+    current_stats_ptr_->average_kvs_in_each_file = current_stats_ptr_->average_kvs_in_each_file==0 ? table_unique : (current_stats_ptr_->average_kvs_in_each_file+table_unique)/2;
+    fprintf(stderr, 
+      "The %lu-th Table statistics in level %d:\n"
+      " - Table variance: %.3f\n"
+      " - Accumulated variance: %.3f\n"
+      " - Average variance (current table & accumulated): %.3f\n"
+      " - Average variance (all tables): %.3f\n"
+      " - Unique keys this table: %lu, Total keys this table: %lu\n"
+      " - Accumulated unique keys: %lu, Accumulated total keys: %lu\n",
+      current_stats_ptr_->table_number, level,table_variance,current_stats_ptr_->variance,(table_variance + current_stats_ptr_->variance) / 2.0,
+      current_stats_ptr_->variance / (double)current_stats_ptr_->table_number, table_unique, table_total_keys,
+      current_stats_ptr_->unique_keys, current_stats_ptr_->total_keys);
+  }
+  
   CompactionStats stats;
   stats.micros = env_->NowMicros() - start_micros;
   stats.bytes_written = meta.file_size;
@@ -610,7 +634,16 @@ void DBImpl::CompactMemTable() {
   
   if(versions_->IsL0NeedsCompaction()){
     MaybeAdjustC0();
-    versions_->RecalculateCompactionScores();
+    // ——DEBUG ——每次 memtable flush + C0 调整后，检查一下 NeedsCompaction
+    {
+      bool needs          = versions_->NeedsCompaction();
+      int  l0_files       = versions_->NumLevelFiles(0);
+      double comp_score   = versions_->GetCurrentCompactionScore();
+      int    comp_trigger = compaction_opts_atomic_.level0_compaction_trigger.load(std::memory_order_relaxed);
+      fprintf(stderr,
+        "[DBG CompactMemTable] NeedsCompaction=%d, L0_files=%d, compaction_score=%.3f, "
+        "level0_compaction_trigger=%d\n",static_cast<int>(needs),l0_files,comp_score,comp_trigger);
+    }
   }
 }
 
@@ -705,6 +738,24 @@ void DBImpl::MaybeScheduleCompaction() {
   } else if (imm_ == nullptr && manual_compaction_ == nullptr &&
              !versions_->NeedsCompaction()) {
     // No work to be done
+    // fprintf(stderr,
+    //        "[DBG MaybeScheduleCompaction] bg_scheduled=%d, shutting_down=%d, bg_error=%s,\n"
+    //         "    imm=%p, manual=%p, NeedsCompaction=%d,\n"
+    //         "    L0_files=%d, compaction_level=%d, compaction_score=%.3f,\n"
+    //         "    level0_compaction_trigger=%d, "
+    //         "level0_slowdown_trigger=%d, "
+    //         "level0_stop_trigger=%d\n",
+    //         background_compaction_scheduled_,
+    //         static_cast<int>(shutting_down_.load(std::memory_order_acquire)),
+    //         bg_error_.ToString().c_str(),
+    //         imm_, manual_compaction_,
+    //         static_cast<int>(versions_->NeedsCompaction()),
+    //         versions_->NumLevelFiles(0),
+    //         versions_->GetCurrentCompactionLevel(),
+    //         versions_->GetCurrentCompactionScore(),
+    //         compaction_opts_atomic_.level0_compaction_trigger.load(std::memory_order_relaxed),
+    //         compaction_opts_atomic_.level0_slowdown_writes_trigger.load(std::memory_order_relaxed),
+    //         compaction_opts_atomic_.level0_stop_writes_trigger.load(std::memory_order_relaxed));
   } else {
     background_compaction_scheduled_ = true;
     env_->Schedule(&DBImpl::BGWork, this);
@@ -768,6 +819,7 @@ void DBImpl::BackgroundCompaction() {
   Status status;
   if (c == nullptr) {
     // Nothing to do
+    fprintf(stderr, "[DBG BackgroundCompaction] c==nullptr, skip compaction\n");
   } else if (!is_manual && c->IsTrivialMove()) { 
     // Move file to next level
     assert(c->num_input_files(0) == 1);
@@ -801,6 +853,10 @@ void DBImpl::BackgroundCompaction() {
     }
     //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
 
+    int ctype = c->get_compaction_type();
+    fprintf(stderr,
+      "[DBG BackgroundCompaction] DoCompactionWork: level=%d, files=%d, type=%d\n",
+       c->level(), c->num_input_files(0), ctype);
 
     CompactionState* compact = new CompactionState(c);
     status = DoCompactionWork(compact);
@@ -813,7 +869,7 @@ void DBImpl::BackgroundCompaction() {
 
   }
   delete c;
-
+  fprintf(stderr,"[DBG BackgroundCompaction] Exit: status.ok=%d\n", status.ok());
   if (status.ok()) {
     // Done
   } else if (shutting_down_.load(std::memory_order_acquire)) {
@@ -953,6 +1009,7 @@ void DBImpl::RecordWriteStall(bool is_stop) {
     if (is_stop) {
       stop_events_.fetch_add(1, std::memory_order_relaxed);
     } else {
+      fprintf(stderr,"Slow down once!\n");
       slowdown_events_.fetch_add(1, std::memory_order_relaxed);
     }
   }
@@ -960,83 +1017,186 @@ void DBImpl::RecordWriteStall(bool is_stop) {
 
 // In db/db_impl.cc
 
-void DBImpl::MaybeAdjustC0() { // Renamed or V2
-  MutexLock l(&mutex_); // Ensure mutual exclusion
+
+bool DBImpl::CheckAndHandleBatch(L0VarianceStats& baseline, L0VarianceStats& batch) {
+  mutex_.AssertHeld(); // Ensure we are under lock
+
+  // Define the similarity threshold (e.g., allow 20% relative difference)
+  const double SKEW_SIMILARITY_THRESHOLD = 0.10; 
+
+  // Ensure both have data to compare
+  if (baseline.total_keys == 0 || batch.total_keys == 0 || baseline.table_number == 0 || batch.table_number == 0) {
+    Log(options_.info_log, "[C0 Adapt Batch] Cannot compare, baseline or batch is empty.\n");
+    fprintf(stderr, "[C0 Adapt Batch] Cannot compare, baseline or batch is empty.\n");
+    // If baseline is empty, maybe make the current batch the new baseline?
+    // For now, let's return false, meaning "not similar enough to proceed".
+    return false; 
+  }
+
+  // --- Calculate Skewness Indicator ---
+  // We use (unique_keys / total_keys) as a proxy. Lower means more skewed.
+  // REMEMBER: These unique_keys are OVERESTIMATES due to simple addition.
+  // We rely on the *change* in this *overestimated* ratio as an indicator.
+  double avg_var_baseline = baseline.variance / baseline.table_number;
+  double avg_var_batch = batch.variance / batch.table_number;
+
+  Log(options_.info_log, 
+      "[C0 Adapt Batch] Comparing - Baseline (Files:%ld, AvgVar:%.3f, Var:%.3f) vs Batch (Files:%ld, AvgVar:%.3f, Var:%.3f)",
+      baseline.table_number, avg_var_baseline, baseline.variance, 
+      batch.table_number, avg_var_batch, batch.variance);
+  fprintf(stderr, 
+      "[C0 Adapt Batch] Comparing - Baseline (Files:%ld, AvgVar:%.3f, Var:%.3f) vs Batch (Files:%ld, AvgVar:%.3f, Var:%.3f)\n",
+      baseline.table_number, avg_var_baseline, baseline.variance,
+      batch.table_number, avg_var_batch, batch.variance);
+
+  // --- Compare Skewness ---
+  bool is_similar = false;
+  // If baseline variance is very close to zero, batch must also be close to zero.
+  if (avg_var_baseline < 1e-6) { 
+    is_similar = (avg_var_batch < 1e-6); 
+  } else {
+    // Calculate relative difference and check against threshold.
+    double relative_difference = std::abs(avg_var_batch - avg_var_baseline) / avg_var_baseline;
+    is_similar = (relative_difference <= SKEW_SIMILARITY_THRESHOLD);
+    Log(options_.info_log, "[C0 Adapt Batch] Relative Difference (AvgVar): %.2f%%", relative_difference * 100.0);
+  }
+
+  // --- Handle Result ---
+  if (is_similar) {
+    fprintf(stderr, "[C0 Adapt Batch] Batches are SIMILAR. Workload seems stable. Resetting batch.\n");
+    Log(options_.info_log, "[C0 Adapt Batch] Batches are SIMILAR. Workload seems stable. Resetting batch.\n");
+    // Workload seems stable, so we "merge" the easy stats (total keys, table number)
+    // We DO NOT merge unique_keys directly. 
+    // We might update variance/average in a statistically sound way if needed,
+    // but for now, let's just extend the baseline count.
+    baseline.total_keys += batch.total_keys;
+    baseline.unique_keys += batch.unique_keys;
+    baseline.table_number += batch.table_number;
+    baseline.variance += batch.variance;
+    // We *could* update baseline.unique_keys with batch.unique_keys, *knowing* it's an overestimate,
+    // or we could decide to *only* update the baseline during actual compaction.
+    // Let's *not* merge unique_keys for now to avoid compounding the error.
+    
+    batch.Reset(); // Reset the batch for the next round.
+    return true;
+
+  } else {
+    Log(options_.info_log, 
+      "[C0 Adapt Batch WARN] Batches are DIFFERENT. Workload may have changed (Baseline_AvgVar:%.3f, Batch_AvgVar:%.3f).",
+      avg_var_baseline, avg_var_batch);
+    fprintf(stderr, 
+      "[C0 Adapt Batch WARN] Batches are DIFFERENT. Workload may have changed (Baseline_AvgVar:%.3f, Batch_AvgVar:%.3f).\n",
+      avg_var_baseline, avg_var_batch);
+    // Workload changed! This is a Red Flag.
+    // What should we do?
+    // Option 1: Reset the batch anyway and let the next L0 compaction handle it. (Simpler)
+    // Option 2: Keep the batch data, reset the baseline, make the batch the new baseline.
+    // Option 3: Trigger MaybeAdjustC0 immediately, forcing a C0 decrease?
+    // Let's choose Option 1 for now, but log a strong warning.
+    // We *must* react - maybe set a flag `c0_increase_plan_invalid = true;`
+    
+    batch.Reset(); // Resetting anyway to start fresh, but we know something changed.
+    return false;
+  }
+}
+
+void DBImpl::MaybeAdjustC0(const L0TuningStatsInCompaction* stats /* = nullptr */) { // Renamed or V2
+  mutex_.AssertHeld(); // Ensure mutual exclusion
 
   // --- 1. Pre-checks ---
   if (!c0_adaptation_enabled_ ) {
+    fprintf(stderr,"Tuning is not allowed!\n");
     return; // Disabled or not L0 compaction
   }
 
-    uint64_t now = env_->NowMicros();
-    // Cooldown check (as before)...
+  uint64_t now = env_->NowMicros();
+  // If we first call the MaybeAdjustC0, we should set the  default_totalkeys_in_C0
+  if(compaction_opts_atomic_.level0_compaction_trigger.load()==4){
+    l0variancestats.default_totalkeys_in_C0 = l0variancestats.total_keys;
+  }
 
-    // --- 2. Gather State & Stall Check ---
-    int current_C0 = compaction_opts_atomic_.level0_compaction_trigger.load();
-    int new_C0 = current_C0;
-    const int slowdown_trigger = compaction_opts_atomic_.level0_slowdown_writes_trigger.load();
-    const int max_C0 = std::max(c0_adaptation_min_c0_, slowdown_trigger - c0_adaptation_headroom_);
-    const int min_C0 = c0_adaptation_min_c0_;
+  if(current_stats_ptr_ == &batch_l0variancestats ){
+    CheckAndHandleBatch(l0variancestats,batch_l0variancestats);
+    fflush(stderr);
+  }
 
-    int64_t slows = slowdown_events_.exchange(0, std::memory_order_relaxed);
-    int64_t stops = stop_events_.exchange(0, std::memory_order_relaxed);
-    bool stalled = (stops > 0 || slows > 0);
+  int current_C0 = compaction_opts_atomic_.level0_compaction_trigger.load();
 
-    if (stalled) {
-      new_C0 = std::max(min_C0, current_C0 - 1); // Decrease C0 on stall (conservatively by 1)
-      Log(options_.info_log,
-        "[C0 Adapt] Stalls detected (S:%ld, T:%ld). Decreasing C0 from %d to %d.",
-        slows, stops, current_C0, new_C0);
-      goto ApplyChanges; // Jump to apply changes
-    }
+  if (stats != nullptr && stats->total_keys_in > 0) {
+    fprintf(stderr, "[C0 Adapt] Post-Compaction Tuning (U:%lu, T:%lu).",
+      stats->unique_keys_in, stats->total_keys_in);
+    Log(options_.info_log, "[C0 Adapt] Post-Compaction Tuning (U:%lu, T:%lu).",
+      stats->unique_keys_in, stats->total_keys_in);
+    
+  }else{
 
-    // --- 3. T_default Management ---
-    uint64_t t_default = default_total_keys_C0_.load(std::memory_order_relaxed);
-    if (t_default == 0) {
-        if (current_C0 == min_C0) {
-            t_default = compact->total_keys_in;
-            default_total_keys_C0_.store(t_default, std::memory_order_relaxed);
-            Log(options_.info_log, "[C0 Adapt] Set T_default to %lu at C0=%d.",
-                t_default, current_C0);
-        } else {
-            Log(options_.info_log, "[C0 Adapt] Waiting for C0=%d to set T_default (current is %d).",
-                min_C0, current_C0);
-        }
-        goto ApplyChanges; // Don't adjust C0 on the first run or if not at base C0
-    }
+    // 1. 检查是否满足增加 C0 的基本条件
+    if (l0variancestats.unique_keys < l0variancestats.total_keys &&
+      l0variancestats.default_totalkeys_in_C0 > l0variancestats.unique_keys && l0variancestats.average_kvs_in_each_file > 0) {
 
-    // --- 4. Decision Logic (Based on T_default & Unique Keys) ---
-    uint64_t total_in = compact->total_keys_in;
-    uint64_t unique_in = compact->unique_keys_in;
-    double discard_ratio = (total_in > 0) ?
-        static_cast<double>(total_in - unique_in) / total_in : 0.0;
+      // 2. 计算理论上还需要增加多少个文件
+      int expected_file_to_tuning = static_cast<int>(
+        (l0variancestats.default_totalkeys_in_C0 - l0variancestats.unique_keys) /l0variancestats.average_kvs_in_each_file);
 
-    // We only increase if discard ratio is reasonably high AND unique keys < T_default
-    if (discard_ratio < 0.10) { // Threshold for "low skew"
-        Log(options_.info_log, "[C0 Adapt] Low discard (%.2f). Holding C0 at %d.",
-            discard_ratio, current_C0);
-    } else if (unique_in >= t_default) {
-        Log(options_.info_log, "[C0 Adapt] Unique keys (%lu) >= T_default (%lu). Holding C0 at %d.",
-            unique_in, t_default, current_C0);
-    } else {
-        // Conditions met: High discard AND U_N < T_default AND no stalls
-        // Increase C0 by 1 (as per "每次增加一个 file")
-        new_C0 = current_C0 + 1;
-        new_C0 = std::min(new_C0, max_C0); // Don't exceed max C0
+      // 向上取整，确保至少为 1 (如果差值>0)
+      if ((l0variancestats.default_totalkeys_in_C0 - l0variancestats.unique_keys) > 0 && expected_file_to_tuning == 0) {
+        expected_file_to_tuning = 1;
+      }
 
+      // 3. 如果理论上需要增加 (expected > 0)
+      if (expected_file_to_tuning > 0) {
+        // --- Core Logic: Decide the actual increase amount ---
+        // Strategy: Aim for 1/3 of the theoretical need,
+        //           but ensure a minimum step and respect a dynamic maximum step.
+
+        // 1. Calculate the base increase amount.
+        //    We take 1/3 of the estimated need as a conservative starting point.
+        //    std::max(1, ...) ensures that if we decide to increase, we increase by at least 1 (the "base increase").
+        int increase_amount = std::max(1, expected_file_to_tuning / 3);
+
+        // 2. & 3. Calculate the dynamic step cap (limited between 4 and 8).
+        //    The cap starts as half of the current C0, making it dynamic (larger C0 allows larger steps).
+        //    std::max(4, ...) sets a *minimum* cap of 4, preventing steps from being too small when C0 is low.
+        //    std::min(8, ...) sets an *absolute maximum* cap of 8, preventing steps from being too large and risky.
+        int dynamic_cap = std::max(4, current_C0 / 2);
+        dynamic_cap = std::min(8, dynamic_cap);
+
+        // 4. Apply the calculated cap to the increase amount.
+        //    This ensures our final increase step respects the safety limits.
+        increase_amount = std::min(dynamic_cap, increase_amount);
+        int new_C0 = current_C0 + increase_amount;
+
+        fprintf(stderr,
+          "[C0 Adapt] Skew: U:%ld < T:%ld. Target T_def:%ld. Expect_add:%d. Increase_by:%d. C0: %d -> %d\n",
+          l0variancestats.unique_keys, l0variancestats.total_keys,
+          l0variancestats.default_totalkeys_in_C0, expected_file_to_tuning,
+          (new_C0 > current_C0) ? (new_C0 - current_C0) : 0, current_C0, new_C0);
+        Log(options_.info_log,
+          "[C0 Adapt] Skew: U:%ld < T:%ld. Target T_def:%ld. Expect_add:%d. Increase_by:%d. C0: %d -> %d\n",
+          l0variancestats.unique_keys, l0variancestats.total_keys,
+          l0variancestats.default_totalkeys_in_C0, expected_file_to_tuning,
+          (new_C0 > current_C0) ? (new_C0 - current_C0) : 0, current_C0, new_C0);
+
+        // 5. 如果 C0 确实改变了，则应用并重新计算分数
         if (new_C0 > current_C0) {
-            Log(options_.info_log, "[C0 Adapt] Increasing C0 from %d to %d (U:%lu < T:%lu, D:%.2f).",
-                current_C0, new_C0, unique_in, t_default, discard_ratio);
-        } else {
-            Log(options_.info_log, "[C0 Adapt] Conditions met, but C0 at max (%d). Holding.", current_C0);
+          compaction_opts_atomic_.SetL0Triggers_Internal(new_C0);
+          versions_->RecalculateCompactionScores(); 
+          current_stats_ptr_ = &batch_l0variancestats;
         }
+      } else {
+        fprintf(stderr, "[C0 Adapt] Skew detected, but expected_file_to_tuning (%d) <= 0. Holding C0 at %d.\n",
+          expected_file_to_tuning, current_C0);
+      }
+    } else {
+      fprintf(stderr, "[C0 Adapt] Conditions not met (U:%ld, T:%ld, T_def:%ld). Holding C0 at %d.\n",
+        l0variancestats.unique_keys, l0variancestats.total_keys, l0variancestats.default_totalkeys_in_C0, current_C0);
     }
+  }
+  fflush(stderr);
 
-    // --- 5. Apply Changes ---
-    if (new_C0 != current_C0) {
-        compaction_opts_atomic_.level0_compaction_trigger.store(new_C0, std::memory_order_relaxed);
-    }
-    last_c0_adjustment_time_.store(now, std::memory_order_relaxed); // Update time regardless
+  // int64_t slows = slowdown_events_.exchange(0, std::memory_order_relaxed);
+  // int64_t stops = stop_events_.exchange(0, std::memory_order_relaxed);
+  // bool stalled = (stops > 0 || slows > 0);
 }
 
 
@@ -1087,6 +1247,9 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   ParsedInternalKey ikey;
   std::string current_user_key;
   bool has_current_user_key = false;
+  int64_t total_KVs_in_compaction=0;
+  int64_t unique_KVs_in_compaction=0;
+  int64_t unique_KVs_writes_after_compaction=0;
   SequenceNumber last_sequence_for_key = kMaxSequenceNumber;
 
 
@@ -1105,7 +1268,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     }
 
     Slice key = input->key();
-
+    total_KVs_in_compaction++;
     if (compact->compaction->ShouldStopBefore(key) &&
         compact->builder != nullptr) {
       status = FinishCompactionOutputFile(compact, input);
@@ -1126,6 +1289,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
           user_comparator()->Compare(ikey.user_key, Slice(current_user_key)) !=
               0) {
         // First occurrence of this user key
+        unique_KVs_in_compaction++;
         current_user_key.assign(ikey.user_key.data(), ikey.user_key.size());
         has_current_user_key = true;
         last_sequence_for_key = kMaxSequenceNumber;
@@ -1173,7 +1337,7 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       }
       compact->current_output()->largest.DecodeFrom(key);
       compact->builder->Add(key, input->value());
-
+      unique_KVs_writes_after_compaction++;
       // Close output file if it is big enough
       if (compact->builder->FileSize() >=
           compact->compaction->MaxOutputFileSize()) {
@@ -1217,6 +1381,13 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   }
 
   mutex_.Lock();
+  if(compact->compaction->level()==0){
+    l0compaction_stats.total_keys_in = total_KVs_in_compaction;
+    l0compaction_stats.unique_keys_in = unique_KVs_in_compaction;
+    l0compaction_stats.total_keys_out = unique_KVs_writes_after_compaction;
+    l0compaction_stats.num_l0_files = compact->compaction->num_input_files(0);
+  }
+
   stats_[compact->compaction->level() + 1].Add(stats);
   level_stats_[compact->compaction->level() + 1].bytes_read += stats.bytes_read;
   level_stats_[compact->compaction->level() + 1].bytes_written += stats.bytes_written;
@@ -1701,7 +1872,6 @@ bool DBImpl::GetProperty_with_whole_lsm(const Slice& property, std::string* valu
       }
       int files = versions_->NumLevelFiles(level);
       if (stats_[level].micros > 0 || files > 0) {
-        std::vector<int> percents = GetLevelPercents();
         std::snprintf(buf, sizeof(buf), "%5d %5d %7.0f %7.0f %8.0f %8.0f %9.0f %9.0f %6d %7d %5d %5d %7d %5d %6d %5d %9d %8f %8f\n",
                       level, files, versions_->NumLevelBytes(level) / 1048576.0,
                       stats_[level].micros / 1e6,
@@ -1724,74 +1894,7 @@ bool DBImpl::GetProperty_with_whole_lsm(const Slice& property, std::string* valu
         int a=0;
         if(level == 0){
           continue;
-        }
-        unsigned level_un = level;
-        bool is_exe = false;
-        for (auto percent : percents) {
-          auto& stats1 = level_hot_cold_stats[level][percent];
-          double total_bytes_read = level_stats_[level].bytes_read;
-          double total_bytes_written = level_stats_[level].bytes_written;
-
-          uint64_t total_count_read = stats1.bytes_read_hot+stats1.bytes_read_cold;
-          uint64_t total_count_written = stats1.bytes_written_hot+stats1.bytes_written_cold;
-
-          if(total_count_written == 0 && total_count_read == 0){
-            continue;
-          }
-          
-          double hotBytesRead =0.0;
-          double coldBytesRead =0.0;
-          double hotBytesWritten =0.0; 
-          double coldBytesWritten =0.0;  
-          double w_hot_data_percentage =0.0;
-          double w_cold_data_percentage = 0.0;
-          double hot_data_percentage = 0.0;
-          double cold_data_percentage =0.0;
-
-          if(total_count_read > 0){
-            hot_data_percentage = total_bytes_read > 0 ? (double)stats1.bytes_read_hot / total_count_read : 0;
-            cold_data_percentage = total_bytes_read > 0 ? (double)stats1.bytes_read_cold / total_count_read : 0;
-            hotBytesRead = (level_stats_[level].bytes_read*hot_data_percentage) / 1048576.0;
-            coldBytesRead = (level_stats_[level].bytes_read*cold_data_percentage) / 1048576.0;
-          }
-
-          if(total_count_written>0){
-            w_hot_data_percentage = total_bytes_written > 0 ? (double)stats1.bytes_written_hot / total_count_written : 0;
-            w_cold_data_percentage = total_bytes_written > 0 ? (double)stats1.bytes_written_cold / total_count_written : 0;
-            hotBytesWritten = (level_stats_[level].bytes_written*w_hot_data_percentage) / 1048576.0;
-            coldBytesWritten = (level_stats_[level].bytes_written*w_cold_data_percentage) / 1048576.0;
-          }
-
-          if(total_count_written>0 && total_count_read > 0){
-            assert(hot_data_percentage == w_hot_data_percentage);
-            assert(cold_data_percentage == w_cold_data_percentage);
-          }
-
-          std::snprintf(buf, sizeof(buf), 
-              "Percent:    %7d %s %8.0f %8.0f %9.0f %9.0f %7ld %7ld %7ld\n",
-              percent, "       ",
-              hotBytesRead, coldBytesRead,  hotBytesWritten,  coldBytesWritten,stats1.bytes_read_hot, stats1.bytes_read_cold, stats1.total_count_hc);
-          value->append(buf);
-          is_exe = true;
-
-          // fprintf(stdout, "Level: %d percentage:%d\n", level, percent);
-          // fprintf(stdout, "Total bytes read: %f\n", total_bytes_read);
-          // fprintf(stdout, "Total bytes written: %f\n", total_bytes_written);
-          // fprintf(stdout, "Accumulated bytes_read_hot: %ld\n", level_hot_cold_stats[2][percent].bytes_read_hot);
-          // fprintf(stdout, "Accumulated bytes_read_cold: %f\n", (double)stats1.bytes_read_cold);
-          // fprintf(stdout, "Accumulated bytes_written_hot: %f\n", (double)stats1.bytes_written_hot);
-          // fprintf(stdout, "Accumulated bytes_written_cold: %f\n", (double)stats1.bytes_written_cold);
-
-          // fprintf(stdout, "Read hot data percentage: %f\n", hot_data_percentage);
-          // fprintf(stdout, "Read cold data percentage: %f\n", cold_data_percentage);
-          // fprintf(stdout, "Written hot data percentage: %f\n", w_hot_data_percentage);
-          // fprintf(stdout, "Written cold data percentage: %f\n", w_cold_data_percentage);
-        }
-        if(is_exe){
-          std::snprintf(buf, sizeof(buf), "\n" );
-          value->append(buf);
-        }
-        
+        }     
       }
     }
     snprintf(buf, sizeof(buf), "user_io:%.3fMB total_ios: %.3fMB WriteAmplification: %2.4f", user_io, total_io, total_io/ user_io);
@@ -1901,16 +2004,6 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   } else {
     delete impl;
   }
-
-
-  // //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
-  // std::fprintf(stdout,"Test start!\n");
-  impl->batch_load_keys_from_CSV2(impl->hot_file_path, impl->percentagesStr);
-  impl->initialize_level_hotcoldstats();
-  // // impl->test_hot_keys();
-  // std::fprintf(stdout,"Test over!\n");
-  // // exit(0);
-  //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
 
   return s;
 }

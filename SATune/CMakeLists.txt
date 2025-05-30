@@ -127,6 +127,7 @@ target_sources(leveldb
     "db/db_impl.cc"
     "db/db_impl.h"
     "db/db_compaction_options.h"
+    "db/l0_tuning.h"
     "db/db_iter.cc"
     "db/db_iter.h"
     "db/dbformat.cc"

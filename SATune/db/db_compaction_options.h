@@ -3,6 +3,9 @@
 #define STORAGE_LEVELDB_INCLUDE_COMPACTION_OPTIONS_ATOMIC_H_
 
 #include <atomic>
+#include <algorithm> // 用于 std::max
+#include <cmath> 
+
 #include "leveldb/compaction_options.h"
 
 namespace leveldb {
@@ -28,6 +31,31 @@ struct CompactionOptionsAtomic {
     max_bytes_for_level1_base(o.max_bytes_for_level1_base),
     max_bytes_for_level1_multiplier(o.max_bytes_for_level1_multiplier),
     block_size(o.block_size) {}
+
+  // --- New Function: Set L0 Triggers (Internal Logic) ---
+  void SetL0Triggers_Internal(int new_C0) {
+    int new_slowdown;
+    int new_stop;
+        
+    if (new_C0 <= 20) {
+      // 如果new_C0在20以下（包含20），固定使用25和36
+      new_slowdown = 25;
+      new_stop = 36;
+    } else {
+      // 如果new_C0大于20，使用动态计算
+      new_slowdown = static_cast<int>(std::ceil(new_C0 * 1.5));  // 1.5倍，向上取整
+      new_stop = new_C0 * 2;  // 2倍
+            
+      // 确保最小差距（防止计算误差导致的问题）
+      new_slowdown = std::max(new_C0 + 1, new_slowdown);
+      new_stop = std::max(new_slowdown + 1, new_stop);
+    }
+        
+    // 原子存储
+    level0_compaction_trigger.store(new_C0, std::memory_order_relaxed);
+    level0_slowdown_writes_trigger.store(new_slowdown, std::memory_order_relaxed);
+    level0_stop_writes_trigger.store(new_stop, std::memory_order_relaxed);
+  }
 };
 
 }  // namespace leveldb

@@ -796,6 +796,8 @@ class VersionSet::Builder {
   void MaybeAddFile(Version* v, int level, FileMetaData* f) {
     if (levels_[level].deleted_files.count(f->number) > 0) {
       // File is deleted: do nothing
+      // fprintf(stderr, "File %llu at level %d is deleted; skipping addition.\n",
+      //   static_cast<unsigned long long>(f->number), level);
     } else {
       std::vector<FileMetaData*>* files = &v->files_[level];
       if (level > 0 && !files->empty()) {
@@ -805,6 +807,8 @@ class VersionSet::Builder {
       }
       f->refs++;
       files->push_back(f);
+      // fprintf(stderr, "File %llu added at level %d; refs: %d.\n",
+      //       static_cast<unsigned long long>(f->number), level, f->refs);
     }
   }
 };
@@ -1111,6 +1115,16 @@ void VersionSet::MarkFileNumberUsed(uint64_t number) {
 void VersionSet::RecalculateCompactionScores() {
   assert(current_ != nullptr);
   Finalize(current_);
+ // === DEBUG: 打印 compaction_level_, compaction_score_ 及当前 L0 文件数 ===
+ {
+    int  level   = current_->compaction_level_;
+    double score = current_->compaction_score_;
+    int  l0_cnt  = current_->NumFiles(0);
+    fprintf(stderr,
+      "[DEBUG] After RecalculateCompactionScores(): "
+      "compaction_level=%d, compaction_score=%.3f, L0_files=%d\n",level, score, l0_cnt);
+  }
+  
 }
 
 void VersionSet::Finalize(Version* v) {
