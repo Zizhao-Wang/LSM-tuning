@@ -118,6 +118,9 @@ struct LEVELDB_EXPORT Options {
   // Defaults to kNeWID (the way used in LevelDB).
   IDType id_type = kNeWID;
 
+
+  size_t max_immutable_memtables = 1;
+
   // Number of keys between restart points for delta encoding of keys.
   // This parameter can be changed dynamically.  Most clients should
   // leave this parameter alone.

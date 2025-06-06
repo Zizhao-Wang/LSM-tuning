@@ -241,11 +241,14 @@ class DBImpl : public DB {
 
   // Delete any unneeded files and stale in-memory entries.
   void RemoveObsoleteFiles() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void RemoveObsoleteFiles2() EXCLUSIVE_LOCKS_REQUIRED(metadata_mutex_);
 
   // Compact the in-memory write buffer to disk.  Switches to a new
   // log-file/memtable and writes a new descriptor iff successful.
   // Errors are recorded in bg_error_.
   void CompactMemTable() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void CompactMemTable(MemTable* mem) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   Status RecoverLogFile(uint64_t log_number, bool last_log, bool* save_manifest,
                         VersionEdit* edit, SequenceNumber* max_sequence)
@@ -262,9 +265,19 @@ class DBImpl : public DB {
   void RecordBackgroundError(const Status& s);
 
   void MaybeScheduleCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void MaybeScheduleFlush() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   static void BGWork(void* db);
+  static void BGWork_Flush(void* db);
+
   void BackgroundCall();
+  void FlushCall();
+
   void BackgroundCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
+  void BackgroundFlush() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+
   void CleanupCompaction(CompactionState* compact)
       EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   Status DoCompactionWork(CompactionState* compact)
@@ -337,11 +350,21 @@ class DBImpl : public DB {
   port::Mutex mutex_;
   std::atomic<bool> shutting_down_;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
-  
-  port::Mutex flush_mutex_;
+
+  port::CondVar flush_work_finished_signal_ GUARDED_BY(mutex_);
+  bool background_flush_scheduled_ GUARDED_BY(mutex_);
 
   MemTable* mem_;
   MemTable* imm_ GUARDED_BY(mutex_);  // Memtable being compacted
+
+  port::Mutex imms_mutex_;
+  std::atomic<size_t> imms_queue_size_{0};
+  std::deque<MemTable*> imms_queue_ GUARDED_BY(imms_mutex_);
+  port::CondVar imms_not_empty_cv_ GUARDED_BY(imms_mutex_); 
+
+  port::Mutex metadata_mutex_;
+  port::CondVar compaction_cv_ GUARDED_BY(metadata_mutex_);
+
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
   WritableFile* logfile_;
   uint64_t logfile_number_ GUARDED_BY(mutex_);

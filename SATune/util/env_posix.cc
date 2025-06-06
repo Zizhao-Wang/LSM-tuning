@@ -864,16 +864,17 @@ void PosixEnv::ScheduleFlush(
   // Start the background thread, if we haven't done so already.
   if (!started_flush_thread_) {
     started_flush_thread_ = true;
-    std::thread flush_thread(PosixEnv::BackgroundThreadEntryPoint, this);
+    std::thread flush_thread(PosixEnv::FlushThreadEntryPoint, this);
+    fprintf(stderr,"start a flush thread!\n");
     flush_thread.detach();
   }
 
   // If the queue is empty, the background thread may be waiting for work.
-  if (background_work_queue_.empty()) {
+  if (flush_queue_.empty()) {
     flush_cv_.Signal();
   }
 
-  background_work_queue_.emplace(background_work_function, background_work_arg);
+  flush_queue_.emplace(background_work_function, background_work_arg);
   flush_mutex_.Unlock();
 }
 
@@ -887,6 +888,7 @@ void PosixEnv::Schedule(
   if (!started_background_thread_) {
     started_background_thread_ = true;
     std::thread background_thread(PosixEnv::BackgroundThreadEntryPoint, this);
+    fprintf(stderr,"start a Background thread!\n");
     background_thread.detach();
   }
 
