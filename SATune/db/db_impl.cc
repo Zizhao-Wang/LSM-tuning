@@ -632,17 +632,17 @@ void DBImpl::CompactMemTable() {
     RecordBackgroundError(s);
   }
   
-  if(versions_->IsL0NeedsCompaction()){
+  L0TuningSystemState current_tuning_state = l0_tuning_state_.load(std::memory_order_acquire);
+  if(versions_->IsL0NeedsCompaction() && current_tuning_state == L0TuningSystemState::IDLE){
     MaybeAdjustC0();
-    // ——DEBUG ——每次 memtable flush + C0 调整后，检查一下 NeedsCompaction
     {
-      bool needs          = versions_->NeedsCompaction();
-      int  l0_files       = versions_->NumLevelFiles(0);
-      double comp_score   = versions_->GetCurrentCompactionScore();
-      int    comp_trigger = compaction_opts_atomic_.level0_compaction_trigger.load(std::memory_order_relaxed);
-      fprintf(stderr,
-        "[DBG CompactMemTable] NeedsCompaction=%d, L0_files=%d, compaction_score=%.3f, "
-        "level0_compaction_trigger=%d\n",static_cast<int>(needs),l0_files,comp_score,comp_trigger);
+      // bool needs          = versions_->NeedsCompaction();
+      // int  l0_files       = versions_->NumLevelFiles(0);
+      // double comp_score   = versions_->GetCurrentCompactionScore();
+      // int    comp_trigger = compaction_opts_atomic_.level0_compaction_trigger.load(std::memory_order_relaxed);
+      // fprintf(stderr,
+      //   "[DBG CompactMemTable] NeedsCompaction=%d, L0_files=%d, compaction_score=%.3f, "
+      //   "level0_compaction_trigger=%d\n",static_cast<int>(needs),l0_files,comp_score,comp_trigger);
     }
   }
 }
@@ -853,11 +853,11 @@ void DBImpl::BackgroundCompaction() {
     }
     //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
 
-    int ctype = c->get_compaction_type();
-    fprintf(stderr,
-      "[DBG BackgroundCompaction] DoCompactionWork: level=%d, files=%d, type=%d\n",
-       c->level(), c->num_input_files(0), ctype);
-
+    // int ctype = c->get_compaction_type();
+    // fprintf(stderr,
+    //   "[DBG BackgroundCompaction] DoCompactionWork: level=%d, files=%d, type=%d\n",
+    //    c->level(), c->num_input_files(0), ctype);
+    l0_tuning_state_.store(L0TuningSystemState::L0_COMPACTION_RUNNING, std::memory_order_release);
     CompactionState* compact = new CompactionState(c);
     status = DoCompactionWork(compact);
     if (!status.ok()) {

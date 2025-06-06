@@ -107,7 +107,6 @@ namespace leveldb {
     IDLE,                       // 正常批次收集中 (L0 未压缩)
     L0_COMPACTION_RUNNING,      // L0 压缩正在进行
     AWAITING_BASELINE           // 等待建立基准 (可选，也可以通过 l0variancestats_.table_number == 0 判断)
-    // 未来可以增加更多状态...
 	};
 
 

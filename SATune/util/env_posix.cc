@@ -569,32 +569,32 @@ class PosixEnv : public Env {
       return PosixError(filename, errno);
     }
 
-    *result = new PosixRandomAccessFile(filename, fd, &fd_limiter_);
-    return Status::OK();
+    // *result = new PosixRandomAccessFile(filename, fd, &fd_limiter_);
+    // return Status::OK();
 
-    // if (!mmap_limiter_.Acquire()) {
-    //   *result = new PosixRandomAccessFile(filename, fd, &fd_limiter_);
-    //   return Status::OK();
-    // }
+    if (!mmap_limiter_.Acquire()) {
+      *result = new PosixRandomAccessFile(filename, fd, &fd_limiter_);
+      return Status::OK();
+    }
 
-    // uint64_t file_size;
-    // Status status = GetFileSize(filename, &file_size);
-    // if (status.ok()) {
-    //   void* mmap_base =
-    //       ::mmap(/*addr=*/nullptr, file_size, PROT_READ, MAP_SHARED, fd, 0);
-    //   if (mmap_base != MAP_FAILED) {
-    //     *result = new PosixMmapReadableFile(filename,
-    //                                         reinterpret_cast<char*>(mmap_base),
-    //                                         file_size, &mmap_limiter_);
-    //   } else {
-    //     status = PosixError(filename, errno);
-    //   }
-    // }
-    // ::close(fd);
-    // if (!status.ok()) {
-    //   mmap_limiter_.Release();
-    // }
-    // return status;
+    uint64_t file_size;
+    Status status = GetFileSize(filename, &file_size);
+    if (status.ok()) {
+      void* mmap_base =
+          ::mmap(/*addr=*/nullptr, file_size, PROT_READ, MAP_SHARED, fd, 0);
+      if (mmap_base != MAP_FAILED) {
+        *result = new PosixMmapReadableFile(filename,
+                                            reinterpret_cast<char*>(mmap_base),
+                                            file_size, &mmap_limiter_);
+      } else {
+        status = PosixError(filename, errno);
+      }
+    }
+    ::close(fd);
+    if (!status.ok()) {
+      mmap_limiter_.Release();
+    }
+    return status;
   }
 
   Status NewWritableFile(const std::string& filename,
@@ -718,6 +718,9 @@ class PosixEnv : public Env {
   void Schedule(void (*background_work_function)(void* background_work_arg),
                 void* background_work_arg) override;
 
+  void ScheduleFlush(void (*background_work_function)(void* background_work_arg),
+                     void* background_work_arg) override ;
+
   void StartThread(void (*thread_main)(void* thread_main_arg),
                    void* thread_main_arg) override {
     std::thread new_thread(thread_main, thread_main_arg);
@@ -774,8 +777,14 @@ class PosixEnv : public Env {
  private:
   void BackgroundThreadMain();
 
+  void FlushThreadMain();
+
   static void BackgroundThreadEntryPoint(PosixEnv* env) {
     env->BackgroundThreadMain();
+  }
+
+  static void FlushThreadEntryPoint(PosixEnv* env) {
+    env->FlushThreadMain();
   }
 
   // Stores the work item data in a Schedule() call.
@@ -798,6 +807,12 @@ class PosixEnv : public Env {
 
   std::queue<BackgroundWorkItem> background_work_queue_
       GUARDED_BY(background_work_mutex_);
+
+
+  port::Mutex flush_mutex_;
+  port::CondVar flush_cv_  GUARDED_BY(flush_mutex_);
+  std::queue<BackgroundWorkItem> flush_queue_ GUARDED_BY(flush_mutex_);
+  bool started_flush_thread_ GUARDED_BY(flush_mutex_);
 
   PosixLockTable locks_;  // Thread-safe.
   Limiter mmap_limiter_;  // Thread-safe.
@@ -836,7 +851,32 @@ PosixEnv::PosixEnv()
     : background_work_cv_(&background_work_mutex_),
       started_background_thread_(false),
       mmap_limiter_(MaxMmaps()),
-      fd_limiter_(MaxOpenFiles()) {}
+      fd_limiter_(MaxOpenFiles()),
+      flush_cv_(&flush_mutex_),
+      started_flush_thread_(false) {}
+
+void PosixEnv::ScheduleFlush(
+    void (*background_work_function)(void* background_work_arg),
+    void* background_work_arg) {
+  
+  flush_mutex_.Lock();
+
+  // Start the background thread, if we haven't done so already.
+  if (!started_flush_thread_) {
+    started_flush_thread_ = true;
+    std::thread flush_thread(PosixEnv::BackgroundThreadEntryPoint, this);
+    flush_thread.detach();
+  }
+
+  // If the queue is empty, the background thread may be waiting for work.
+  if (background_work_queue_.empty()) {
+    flush_cv_.Signal();
+  }
+
+  background_work_queue_.emplace(background_work_function, background_work_arg);
+  flush_mutex_.Unlock();
+}
+
 
 void PosixEnv::Schedule(
     void (*background_work_function)(void* background_work_arg),
@@ -874,6 +914,25 @@ void PosixEnv::BackgroundThreadMain() {
     background_work_queue_.pop();
 
     background_work_mutex_.Unlock();
+    background_work_function(background_work_arg);
+  }
+}
+
+void PosixEnv::FlushThreadMain() {
+  while (true) {
+    flush_mutex_.Lock();
+
+    // Wait until there is work to be done.
+    while (flush_queue_.empty()) {
+      flush_cv_.Wait();
+    }
+
+    assert(!flush_queue_.empty());
+    auto background_work_function = flush_queue_.front().function;
+    void* background_work_arg = flush_queue_.front().arg;
+    flush_queue_.pop();
+
+    flush_mutex_.Unlock();
     background_work_function(background_work_arg);
   }
 }

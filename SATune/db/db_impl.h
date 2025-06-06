@@ -215,7 +215,6 @@ class DBImpl : public DB {
   L0VarianceStats* current_stats_ptr_ GUARDED_BY(mutex_);
 
   L0TuningStatsInCompaction l0compaction_stats GUARDED_BY(mutex_);
-
   std::atomic<L0TuningSystemState> l0_tuning_state_{L0TuningSystemState::IDLE};
 
   // --- C0 Adaptation ---
@@ -336,9 +335,11 @@ class DBImpl : public DB {
 
   // State below is protected by mutex_
   port::Mutex mutex_;
-
   std::atomic<bool> shutting_down_;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
+  
+  port::Mutex flush_mutex_;
+
   MemTable* mem_;
   MemTable* imm_ GUARDED_BY(mutex_);  // Memtable being compacted
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
