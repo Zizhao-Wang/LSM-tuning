@@ -445,6 +445,10 @@ if(LEVELDB_BUILD_BENCHMARKS)
 
   if(NOT BUILD_SHARED_LIBS)
     leveldb_benchmark("benchmarks/db_bench.cc")
+    # target_compile_options(db_bench PRIVATE -fsanitize=thread -g)
+    # target_link_options(db_bench PRIVATE -fsanitize=thread)
+    target_compile_options(db_bench PRIVATE -fsanitize=address -g -fno-omit-frame-pointer)
+    target_link_options(db_bench PRIVATE -fsanitize=address)
   endif(NOT BUILD_SHARED_LIBS)
 
   target_link_libraries(db_bench PRIVATE )

@@ -148,6 +148,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       flush_work_finished_signal_(&mutex_),
       imms_not_empty_cv_(&imms_mutex_),
       compaction_cv_(&metadata_mutex_),
+      shutdown_cv_(&mutex_),
       mem_(nullptr),
       imm_(nullptr),
       current_stats_ptr_(nullptr),
@@ -165,12 +166,25 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
                                &internal_comparator_, &compaction_opts_atomic_)) {}
 
 DBImpl::~DBImpl() {
+
   // Wait for background work to finish.
   mutex_.Lock();
   shutting_down_.store(true, std::memory_order_release);
-  while (background_compaction_scheduled_) {
-    background_work_finished_signal_.Wait();
+
+  {
+    MutexLock l(&imms_mutex_);
+    imms_not_empty_cv_.SignalAll(); 
   }
+
+  {
+    MutexLock l(&metadata_mutex_);
+    compaction_cv_.SignalAll();      
+  }
+
+  while (running_background_threads_.load() > 0) {
+    shutdown_cv_.Wait();
+  }
+
   mutex_.Unlock();
 
   if (db_lock_ != nullptr) {
@@ -237,72 +251,6 @@ void DBImpl::MaybeIgnoreError(Status* s) const {
   }
 }
 
-void DBImpl::RemoveObsoleteFiles() {
-  mutex_.AssertHeld();
-
-  if (!bg_error_.ok()) {
-    // After a background error, we don't know whether a new version may
-    // or may not have been committed, so we cannot safely garbage collect.
-    return;
-  }
-
-  // Make a set of all of the live files
-  std::set<uint64_t> live = pending_outputs_;
-  versions_->AddLiveFiles(&live);
-
-  std::vector<std::string> filenames;
-  env_->GetChildren(dbname_, &filenames);  // Ignoring errors on purpose
-  uint64_t number;
-  FileType type;
-  std::vector<std::string> files_to_delete;
-  for (std::string& filename : filenames) {
-    if (ParseFileName(filename, &number, &type)) {
-      bool keep = true;
-      switch (type) {
-        case kLogFile:
-          keep = ((number >= versions_->LogNumber()) ||
-                  (number == versions_->PrevLogNumber()));
-          break;
-        case kDescriptorFile:
-          // Keep my manifest file, and any newer incarnations'
-          // (in case there is a race that allows other incarnations)
-          keep = (number >= versions_->ManifestFileNumber());
-          break;
-        case kTableFile:
-          keep = (live.find(number) != live.end());
-          break;
-        case kTempFile:
-          // Any temp files that are currently being written to must
-          // be recorded in pending_outputs_, which is inserted into "live"
-          keep = (live.find(number) != live.end());
-          break;
-        case kCurrentFile:
-        case kDBLockFile:
-        case kInfoLogFile:
-          keep = true;
-          break;
-      }
-
-      if (!keep) {
-        files_to_delete.push_back(std::move(filename));
-        if (type == kTableFile) {
-          table_cache_->Evict(number);
-        }
-        Log(options_.info_log, "Delete type=%d #%lld\n", static_cast<int>(type),
-            static_cast<unsigned long long>(number));
-      }
-    }
-  }
-
-  // While deleting all files unblock other threads. All files being deleted
-  // have unique names which will not collide with newly created files and
-  // are therefore safe to delete while allowing other threads to proceed.
-  mutex_.Unlock();
-  for (const std::string& filename : files_to_delete) {
-    env_->RemoveFile(dbname_ + "/" + filename);
-  }
-  mutex_.Lock();
-}
 
 
 void DBImpl::RemoveObsoleteFiles2() {
@@ -635,17 +583,17 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
     current_stats_ptr_->unique_keys += table_unique;
     current_stats_ptr_->total_keys += table_total_keys;
     current_stats_ptr_->average_kvs_in_each_file = current_stats_ptr_->average_kvs_in_each_file==0 ? table_unique : (current_stats_ptr_->average_kvs_in_each_file+table_unique)/2;
-    fprintf(stderr, 
-      "The %lu-th Table statistics in level %d:\n"
-      " - Table variance: %.3f\n"
-      " - Accumulated variance: %.3f\n"
-      " - Average variance (current table & accumulated): %.3f\n"
-      " - Average variance (all tables): %.3f\n"
-      " - Unique keys this table: %lu, Total keys this table: %lu\n"
-      " - Accumulated unique keys: %lu, Accumulated total keys: %lu\n",
-      current_stats_ptr_->table_number, level,table_variance,current_stats_ptr_->variance,(table_variance + current_stats_ptr_->variance) / 2.0,
-      current_stats_ptr_->variance / (double)current_stats_ptr_->table_number, table_unique, table_total_keys,
-      current_stats_ptr_->unique_keys, current_stats_ptr_->total_keys);
+    // fprintf(stderr, 
+    //   "The %lu-th Table statistics in level %d:\n"
+    //   " - Table variance: %.3f\n"
+    //   " - Accumulated variance: %.3f\n"
+    //   " - Average variance (current table & accumulated): %.3f\n"
+    //   " - Average variance (all tables): %.3f\n"
+    //   " - Unique keys this table: %lu, Total keys this table: %lu\n"
+    //   " - Accumulated unique keys: %lu, Accumulated total keys: %lu\n",
+    //   current_stats_ptr_->table_number, level,table_variance,current_stats_ptr_->variance,(table_variance + current_stats_ptr_->variance) / 2.0,
+    //   current_stats_ptr_->variance / (double)current_stats_ptr_->table_number, table_unique, table_total_keys,
+    //   current_stats_ptr_->unique_keys, current_stats_ptr_->total_keys);
   }
   
   CompactionStats stats;
@@ -697,7 +645,7 @@ void DBImpl::CompactMemTable() {
     imm_->Unref();
     imm_ = nullptr;
     has_imm_.store(false, std::memory_order_release);
-    RemoveObsoleteFiles();
+    // RemoveObsoleteFiles();
   } else {
     RecordBackgroundError(s);
   }
@@ -719,7 +667,7 @@ void DBImpl::CompactMemTable() {
 
 
 void DBImpl::CompactMemTable(MemTable* mem_to_deal) {
-  MutexLock l(&metadata_mutex_); 
+  MutexLock l(&metadata_mutex_);
   assert(mem_to_deal != nullptr);
   // Save the contents of the memtable as a new Table
   VersionEdit edit;
@@ -737,6 +685,7 @@ void DBImpl::CompactMemTable(MemTable* mem_to_deal) {
     edit.SetPrevLogNumber(0);
     edit.SetLogNumber(logfile_number_);  // Earlier logs no longer needed
     s = versions_->LogAndApply(&edit, &metadata_mutex_);
+    
   }
 
   if (s.ok()) {
@@ -745,6 +694,7 @@ void DBImpl::CompactMemTable(MemTable* mem_to_deal) {
     // imm_ = nullptr;
     // has_imm_.store(false, std::memory_order_release);
     RemoveObsoleteFiles2();
+    num_level0_files_.store(versions_->NumLevelFiles(0), std::memory_order_relaxed);
   } else {
     RecordBackgroundError(s);
   }
@@ -828,7 +778,6 @@ Status DBImpl::TEST_CompactMemTable() {
 }
 
 void DBImpl::MaybeScheduleFlush() {
-  // 这个函数可能在持有全局 mutex_ 的情况下被调用
   mutex_.AssertHeld();
 
   if (shutting_down_.load(std::memory_order_acquire)) {
@@ -842,8 +791,7 @@ void DBImpl::MaybeScheduleFlush() {
     }
   }
 
-  // background_flush_scheduled_ 标志可以保留，用来确保我们只调度一次后台线程启动。
-  // 如果后台线程已经启动并在循环中，我们就不需要再做什么了。
+  // background_flush_scheduled_ is used to ensure that we only schedule the background thread to start once.
   if (background_flush_scheduled_) {
     return;
   }
@@ -867,7 +815,6 @@ void DBImpl::BGWork_Flush(void* db) {
 }
 
 
-// 这是您提供的原始 FlushCall 函数，我们只在其中加入调试输出
 void DBImpl::FlushCall() {
   fprintf(stderr, "[Flush Thread]: Entered FlushCall.\n");
   while (!shutting_down_.load(std::memory_order_acquire)) {
@@ -891,43 +838,31 @@ void DBImpl::FlushCall() {
 
     {
       MutexLock l(&mutex_);
-      fprintf(stderr,"Notify the waiting thread!\n");
+      // fprintf(stderr,"Notify the waiting thread!\n");
       flush_work_finished_signal_.SignalAll(); // 唤醒所有在等待的用户线程
     }
 
     // 2. 如果成功获取到任务，就在不持有任何锁的情况下执行刷盘操作。
+    bool schedule_compaction = false;
     if (mem_to_flush != nullptr ) {
-      CompactMemTable(mem_to_flush); // 这个函数现在需要接收一个参数
+      // running_background_threads_.fetch_add(1, std::memory_order_relaxed);
+      CompactMemTable(mem_to_flush); 
       mem_to_flush->Unref();
-      
-      MutexLock l(&metadata_mutex_);
-      MaybeScheduleCompaction();
+      // running_background_threads_.fetch_sub(1, std::memory_order_relaxed);
+      if (versions_->NeedsCompaction() && running_background_threads_.load()==0) {
+        MaybeScheduleCompaction(); 
+      } 
     }
+
+
+  }
+
+  {
+    MutexLock l(&mutex_);
+    shutdown_cv_.SignalAll(); // 只通知析构函数
   }
   fprintf(stderr, "[Flush Thread]: Exiting FlushCall function.\n");
 }
-
-
-// void DBImpl::FlushCall() {
-//   MutexLock l(&mutex_);
-//   assert(background_flush_scheduled_);
-//   if (shutting_down_.load(std::memory_order_acquire)) {
-//     // No more background work when shutting down.
-//   } else if (!bg_error_.ok()) {
-//     // No more background work after a background error.
-//   } else {
-//     FlushMinorCompaction();
-//   }
-
-//   background_flush_scheduled_ = false;
-
-//   // Previous compaction may have produced too many files in a level,
-//   // so reschedule another compaction if needed.
-//   MaybeScheduleFlush();
-//   flush_work_finished_signal_.SignalAll();
-// }
-
-
 
 
 void DBImpl::RecordBackgroundError(const Status& s) {
@@ -938,81 +873,26 @@ void DBImpl::RecordBackgroundError(const Status& s) {
   }
 }
 
-// void DBImpl::MaybeScheduleCompaction() {
+void DBImpl::MaybeScheduleCompaction(bool already_locked) {
 
-//   if (background_compaction_scheduled_) {
-//     // Already scheduled
-//   } else if (shutting_down_.load(std::memory_order_acquire)) {
-//     // DB is being deleted; no more background compactions
-//   } else if (!bg_error_.ok()) {
-//     // Already got an error; no more changes
-//   } else if (manual_compaction_ == nullptr && !versions_->NeedsCompaction()) {
-//     // No work to be done
-//     // fprintf(stderr,
-//     //        "[DBG MaybeScheduleCompaction] bg_scheduled=%d, shutting_down=%d, bg_error=%s,\n"
-//     //         "    imm=%p, manual=%p, NeedsCompaction=%d,\n"
-//     //         "    L0_files=%d, compaction_level=%d, compaction_score=%.3f,\n"
-//     //         "    level0_compaction_trigger=%d, "
-//     //         "level0_slowdown_trigger=%d, "
-//     //         "level0_stop_trigger=%d\n",
-//     //         background_compaction_scheduled_,
-//     //         static_cast<int>(shutting_down_.load(std::memory_order_acquire)),
-//     //         bg_error_.ToString().c_str(),
-//     //         imm_, manual_compaction_,
-//     //         static_cast<int>(versions_->NeedsCompaction()),
-//     //         versions_->NumLevelFiles(0),
-//     //         versions_->GetCurrentCompactionLevel(),
-//     //         versions_->GetCurrentCompactionScore(),
-//     //         compaction_opts_atomic_.level0_compaction_trigger.load(std::memory_order_relaxed),
-//     //         compaction_opts_atomic_.level0_slowdown_writes_trigger.load(std::memory_order_relaxed),
-//     //         compaction_opts_atomic_.level0_stop_writes_trigger.load(std::memory_order_relaxed));
-//   } else {
-//     background_compaction_scheduled_ = true;
-//     env_->Schedule(&DBImpl::BGWork, this);
-//   }
-// }
-
-// void DBImpl::BackgroundCall() {
-//   assert(background_compaction_scheduled_);
-//   if (shutting_down_.load(std::memory_order_acquire)) {
-//     // No more background work when shutting down.
-//   } else if (!bg_error_.ok()) {
-//     // No more background work after a background error.
-//   } else {
-//     BackgroundCompaction();
-//   }
-
-//   background_compaction_scheduled_ = false;
-
-//   // Previous compaction may have produced too many files in a level,
-//   // so reschedule another compaction if needed.
-//   MaybeScheduleCompaction();
-//   background_work_finished_signal_.SignalAll();
-// }
-
-void DBImpl::MaybeScheduleCompaction() {
-  metadata_mutex_.AssertHeld();
-
-  // 1. 【通知】按响门铃，唤醒可能正在等待的 Compaction 线程
-  // 无论它是否在忙，都通知一声，告诉它状态已更新。
-  fprintf(stderr, "[Flush Thread]: Signaling compaction thread that state has changed.\n");
-  compaction_cv_.SignalAll(); 
-
-  // 2. 【调度】如果 Compaction 工人从未被派遣过，就派遣一次。
-  // background_compaction_scheduled_ 标志确保我们只创建一个常驻的后台线程。
-  if (background_compaction_scheduled_) {
-    return;
+  // metadata_mutex_.AssertHeld();
+  if(already_locked){
+    return ;
   }
-  
-  if (shutting_down_.load(std::memory_order_acquire) || !bg_error_.ok()) {
+
+  {
+    MutexLock l(&metadata_mutex_);
+    fprintf(stderr, "[Flush Thread]: Signaling compaction thread that state has changed.\n");
+    compaction_cv_.SignalAll(); 
+  } 
+
+  if (background_compaction_scheduled_ || shutting_down_.load(std::memory_order_acquire) || !bg_error_.ok()) {
     return;
   }
 
-  // 检查是否真的有工作可做，这是一个启动优化。
-  if (versions_->NeedsCompaction()) {
+  if(versions_->NeedsCompaction()){
     fprintf(stderr, "[Flush Thread]: Scheduling a new PERMANENT compaction thread.\n");
     background_compaction_scheduled_ = true;
-    // 为了清晰，我们可以用一个新的入口函数，比如 BGWork_Compaction
     env_->Schedule(&DBImpl::BGWork, this);
   }
 }
@@ -1023,9 +903,7 @@ void DBImpl::BGWork(void* db) {
 }
 
 void DBImpl::BackgroundCall() {
-  // 1. 在循环开始时，就获取元数据锁。这个线程的大部分时间要么在等待，要么在处理元数据。
   MutexLock l(&metadata_mutex_);
-
   while (!shutting_down_.load(std::memory_order_acquire)) {
     // 2. 检查是否有工作可做。如果没有，就等待。
     //    使用 while 循环可以防止“虚假唤醒”，确保醒来后条件真的满足。
@@ -1041,15 +919,27 @@ void DBImpl::BackgroundCall() {
     }
     
     fprintf(stderr, "[Compaction Thread]: ---> Starting a major compaction.\n");
-    BackgroundCompaction(); // 假设这是纯粹的工人函数
-    fprintf(stderr, "[Compaction Thread]: <--- Finished a major compaction.\n");
+    running_background_threads_.fetch_add(1, std::memory_order_relaxed);
+
+    {
+      BackgroundCompaction(); 
+    }
     
-    // 唤醒可能在等待的用户线程
+    
+    fprintf(stderr, "[Compaction Thread]: <--- Finished a major compaction.\n");
+    running_background_threads_.fetch_sub(1, std::memory_order_relaxed);
+    // Wake up user threads that may be waiting
     {
       MutexLock l_main(&mutex_);
       background_work_finished_signal_.SignalAll();
     }
   }
+
+  {
+    MutexLock l(&mutex_);
+    shutdown_cv_.SignalAll(); // 只通知析构函数
+  }
+
 }
 
 void DBImpl::BackgroundCompaction() {
@@ -1131,6 +1021,9 @@ void DBImpl::BackgroundCompaction() {
 
   }
   delete c;
+
+  num_level0_files_.store(versions_->NumLevelFiles(0), std::memory_order_relaxed);
+
   fprintf(stderr,"[DBG BackgroundCompaction] Exit: status.ok=%d\n", status.ok());
   if (status.ok()) {
     // Done
@@ -1177,7 +1070,7 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   assert(compact->builder == nullptr);
   uint64_t file_number;
   {
-    mutex_.Lock();
+    metadata_mutex_.Lock();
     file_number = versions_->NewFileNumber();
     pending_outputs_.insert(file_number);
     CompactionState::Output out;
@@ -1185,7 +1078,7 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
     out.smallest.Clear();
     out.largest.Clear();
     compact->outputs.push_back(out);
-    mutex_.Unlock();
+    metadata_mutex_.Unlock();
   }
 
   // Make the output file
@@ -1454,6 +1347,7 @@ void DBImpl::MaybeAdjustC0(const L0TuningStatsInCompaction* stats /* = nullptr *
         l0variancestats.unique_keys, l0variancestats.total_keys, l0variancestats.default_totalkeys_in_C0, current_C0);
     }
   }
+  fprintf(stderr,"\n\n");
   fflush(stderr);
 
   // int64_t slows = slowdown_events_.exchange(0, std::memory_order_relaxed);
@@ -1782,12 +1676,12 @@ void DBImpl::RecordReadSample(Slice key) {
 }
 
 const Snapshot* DBImpl::GetSnapshot() {
-  MutexLock l(&mutex_);
+  MutexLock l(&metadata_mutex_);
   return snapshots_.New(versions_->LastSequence());
 }
 
 void DBImpl::ReleaseSnapshot(const Snapshot* snapshot) {
-  MutexLock l(&mutex_);
+  MutexLock l(&metadata_mutex_);
   snapshots_.Delete(static_cast<const SnapshotImpl*>(snapshot));
 }
 
@@ -1938,8 +1832,22 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       // Yield previous error
       s = bg_error_;
       break;
-    } else if (allow_delay && versions_->NumLevelFiles(0) >=
-                                compaction_opts_atomic_.level0_slowdown_writes_trigger.load()) {
+    } 
+
+    bool needs_slowdown = false;
+    bool needs_stop = false;
+    {
+      const int num_l0_files = num_level0_files_.load(std::memory_order_relaxed);
+      if (allow_delay && num_l0_files >= 
+          compaction_opts_atomic_.level0_slowdown_writes_trigger.load(std::memory_order_relaxed)) {
+        needs_slowdown = true;
+      } else if (num_l0_files >= 
+                 compaction_opts_atomic_.level0_stop_writes_trigger.load(std::memory_order_relaxed)) {
+        needs_stop = true;
+      }
+    } 
+    
+    if (needs_slowdown) {
       // We are getting close to hitting a hard limit on the number of
       // L0 files.  Rather than delaying a single write by several
       // seconds when we hit the hard limit, start delaying each
@@ -1955,7 +1863,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
                (mem_->ApproximateMemoryUsage() <= options_.write_buffer_size)) {
       // There is room in current memtable
       break;
-    } else if (versions_->NumLevelFiles(0) >= compaction_opts_atomic_.level0_stop_writes_trigger.load()) {
+    } else if (needs_stop) {
       // There are too many level-0 files.
       RecordWriteStall(true);  
       Log(options_.info_log, "Too many L0 files; waiting...\n");
@@ -2021,7 +1929,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
 bool DBImpl::GetProperty(const Slice& property, std::string* value) {
   
   value->clear();
-  MutexLock l(&mutex_);
+  MutexLock l(&metadata_mutex_);
   Slice in = property;
   Slice prefix("leveldb.");
   if (!in.starts_with(prefix)) return false;
@@ -2096,7 +2004,7 @@ bool DBImpl::GetProperty(const Slice& property, std::string* value) {
 bool DBImpl::GetProperty_with_whole_lsm(const Slice& property, std::string* value) {
   
   value->clear();
-  MutexLock l(&mutex_);
+  MutexLock l(&metadata_mutex_);
   Slice in = property;
   Slice prefix("leveldb.");
   if (!in.starts_with(prefix)) return false;
@@ -2230,7 +2138,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   std::fprintf(stderr, "entering db_impl.cc:%s\n", dbname.c_str());
   fflush(stderr);
   DBImpl* impl = new DBImpl(options, dbname);
-  impl->mutex_.Lock();
+  impl->metadata_mutex_.Lock();
   VersionEdit edit;
   // Recover handles create_if_missing, error_if_exists
   bool save_manifest = false;
@@ -2253,13 +2161,14 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
   if (s.ok() && save_manifest) {
     edit.SetPrevLogNumber(0);  // No older logs needed after recovery.
     edit.SetLogNumber(impl->logfile_number_);
-    s = impl->versions_->LogAndApply(&edit, &impl->mutex_);
+    s = impl->versions_->LogAndApply(&edit, &impl->metadata_mutex_);
   }
   if (s.ok()) {
-    impl->RemoveObsoleteFiles();
-    impl->MaybeScheduleCompaction();
+    impl->RemoveObsoleteFiles2();
+    impl->num_level0_files_.store(impl->versions_->NumLevelFiles(0), std::memory_order_relaxed);
+    impl->MaybeScheduleCompaction(true);
   }
-  impl->mutex_.Unlock();
+  impl->metadata_mutex_.Unlock();
   if (s.ok()) {
     assert(impl->mem_ != nullptr);
     *dbptr = impl;

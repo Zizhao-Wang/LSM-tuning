@@ -48,21 +48,60 @@ namespace port {
 class CondVar;
 
 // Thinly wraps std::mutex.
+// class LOCKABLE Mutex {
+//  public:
+//   Mutex() = default;
+//   ~Mutex() = default;
+
+//   Mutex(const Mutex&) = delete;
+//   Mutex& operator=(const Mutex&) = delete;
+
+//   void Lock() EXCLUSIVE_LOCK_FUNCTION() { mu_.lock(); }
+//   void Unlock() UNLOCK_FUNCTION() { mu_.unlock(); }
+//   void AssertHeld() ASSERT_EXCLUSIVE_LOCK() {}
+
+//  private:
+//   friend class CondVar;
+//   std::mutex mu_;
+// };
+
+
 class LOCKABLE Mutex {
  public:
-  Mutex() = default;
+  // 默认构造函数，用于不需要名字的临时锁
+  Mutex() : name_("unnamed_mutex") {}
+
+  // 【新增】带名字的构造函数
+  explicit Mutex(std::string name) : name_(std::move(name)) {}
+
   ~Mutex() = default;
 
   Mutex(const Mutex&) = delete;
   Mutex& operator=(const Mutex&) = delete;
 
-  void Lock() EXCLUSIVE_LOCK_FUNCTION() { mu_.lock(); }
-  void Unlock() UNLOCK_FUNCTION() { mu_.unlock(); }
-  void AssertHeld() ASSERT_EXCLUSIVE_LOCK() {}
+  void Lock() EXCLUSIVE_LOCK_FUNCTION() {
+  //  if(name_=="metadata_mutex"){
+  //     fprintf(stderr, "[LOCKING] Thread %ld is TRYING to lock %s...\n",(long)pthread_self(), name_.c_str());
+  //  }
+    mu_.lock();
+    // if(name_=="metadata_mutex"){
+    //   fprintf(stderr, "[LOCKED]  Thread %ld has ACQUIRED lock %s.\n",(long)pthread_self(), name_.c_str());
+    // }
+  }
+
+  void Unlock() UNLOCK_FUNCTION() {
+    // if(name_=="metadata_mutex"){
+    //   fprintf(stderr, "[UNLOCK]  Thread %ld is RELEASING lock %s.\n",(long)pthread_self(), name_.c_str());
+    // }
+    mu_.unlock();
+  }
+
+  void AssertHeld() ASSERT_EXCLUSIVE_LOCK() { /* No-op */ }
 
  private:
   friend class CondVar;
   std::mutex mu_;
+  const std::string name_;
 };
 
 // Thinly wraps std::condition_variable.
@@ -86,6 +125,74 @@ class CondVar {
   std::condition_variable cv_;
   Mutex* const mu_;
 };
+
+
+
+
+
+
+// class LOCKABLE Mutex2 {
+//  public:
+//   // 默认构造函数，用于不需要名字的临时锁
+//   Mutex2() : name_("metadata") {}
+
+//   // 【新增】带名字的构造函数
+//   explicit Mutex2(std::string name) : name_(std::move(name)) {}
+
+//   ~Mutex2() = default;
+
+//   Mutex2(const Mutex2&) = delete;
+//   Mutex2& operator=(const Mutex2&) = delete;
+
+//   void Lock() EXCLUSIVE_LOCK_FUNCTION() {
+//     // 打印哪个线程正在尝试获取哪个锁
+//     fprintf(stderr, "[LOCKING] Thread %ld is TRYING to lock %s...\n",
+//             (long)pthread_self(), name_.c_str());
+//     mu_.lock();
+//     // 打印成功获取
+//     fprintf(stderr, "[LOCKED]  Thread %ld has ACQUIRED lock %s.\n",
+//             (long)pthread_self(), name_.c_str());
+//   }
+
+//   void Unlock() UNLOCK_FUNCTION() {
+//     // 打印哪个线程将要释放哪个锁
+//     fprintf(stderr, "[UNLOCK]  Thread %ld is RELEASING lock %s.\n",
+//             (long)pthread_self(), name_.c_str());
+//     mu_.unlock();
+//   }
+
+//   void AssertHeld() ASSERT_EXCLUSIVE_LOCK() { /* No-op */ }
+
+//  private:
+//   friend class CondVar2;
+//   std::mutex mu_;
+//   const std::string name_;
+// };
+
+// Thinly wraps std::condition_variable.
+// class CondVar2 {
+//  public:
+//   explicit CondVar2(Mutex2* mu) : mu_(mu) { assert(mu != nullptr); }
+//   ~CondVar2() = default;
+
+//   CondVar2(const CondVar2&) = delete;
+//   CondVar2& operator=(const CondVar2&) = delete;
+
+//   void Wait() {
+//     std::unique_lock<std::mutex> lock(mu_->mu_, std::adopt_lock);
+//     cv_.wait(lock);
+//     lock.release();
+//   }
+//   void Signal() { cv_.notify_one(); }
+//   void SignalAll() { cv_.notify_all(); }
+
+//  private:
+//   std::condition_variable cv_;
+//   Mutex2* const mu_;
+// };
+
+
+
 
 inline bool Snappy_Compress(const char* input, size_t length,
                             std::string* output) {

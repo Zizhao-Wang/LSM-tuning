@@ -264,7 +264,7 @@ class DBImpl : public DB {
 
   void RecordBackgroundError(const Status& s);
 
-  void MaybeScheduleCompaction() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
+  void MaybeScheduleCompaction(bool already_locked=false) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   void MaybeScheduleFlush() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
@@ -351,18 +351,24 @@ class DBImpl : public DB {
   std::atomic<bool> shutting_down_;
   port::CondVar background_work_finished_signal_ GUARDED_BY(mutex_);
 
+  std::atomic<int64_t> num_level0_files_{0};
+
   port::CondVar flush_work_finished_signal_ GUARDED_BY(mutex_);
   bool background_flush_scheduled_ GUARDED_BY(mutex_);
+  std::atomic<int> running_background_threads_{0};
 
   MemTable* mem_;
   MemTable* imm_ GUARDED_BY(mutex_);  // Memtable being compacted
+
+  port::CondVar shutdown_cv_ GUARDED_BY(mutex_); 
 
   port::Mutex imms_mutex_;
   std::atomic<size_t> imms_queue_size_{0};
   std::deque<MemTable*> imms_queue_ GUARDED_BY(imms_mutex_);
   port::CondVar imms_not_empty_cv_ GUARDED_BY(imms_mutex_); 
 
-  port::Mutex metadata_mutex_;
+  // port::Mutex metadata_mutex_;
+  port::Mutex metadata_mutex_{"metadata_mutex"};
   port::CondVar compaction_cv_ GUARDED_BY(metadata_mutex_);
 
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_

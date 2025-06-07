@@ -6,5 +6,5 @@ CXX_DEFINES = -DBENCHMARK_STATIC_DEFINE -DLEVELDB_PLATFORM_POSIX=1
 
 CXX_INCLUDES = -I/home/jeff-wang/LSM-tuning/SATune/release/include -I/home/jeff-wang/LSM-tuning/SATune/. -I/home/jeff-wang/LSM-tuning/SATune/include -I/home/jeff-wang/LSM-tuning/SATune/third_party/benchmark/include -isystem /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googlemock/include -isystem /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googlemock -isystem /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include -isystem /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest
 
-CXX_FLAGS =  -fno-exceptions -fno-rtti -g -std=c++11
+CXX_FLAGS =  -fno-exceptions -fno-rtti -g -fsanitize=address -g -fno-omit-frame-pointer -std=c++11
 
