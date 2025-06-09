@@ -5,8 +5,20 @@ bash -c 'ulimit -n 800000'
 BASE_VALUE_SIZE=128
 billion=1000000000
 
+DEVICE_NAME="nvme1n1"
+
 declare -A slowdown_map
 declare -A stop_map
+declare -A cluster_num_kvs_map
+
+
+cluster_num_kvs_map[13]="20000000 40000000 60000000 80000000 100000000"
+cluster_num_kvs_map[1]="200000000 400000000 600000000 800000000 1000000000"
+cluster_num_kvs_map[25]="200000000 400000000 600000000 800000000 1000000000"
+cluster_num_kvs_map[30]="200000000 400000000 600000000 800000000 1000000000"
+cluster_num_kvs_map[35]="200000000 400000000 600000000 800000000 1000000000"
+cluster_num_kvs_map[51]="200000000 400000000 600000000 800000000 1000000000"
+
 
 # 为不同的ct0值设定对应的slowdown和stop值
 slowdown_map[4]=16
@@ -40,8 +52,6 @@ cluster_value_size_map[30]=689
 cluster_value_size_map[35]=1796
 cluster_value_size_map[51]=221
 
-current_cluster_a=30
-
 
 convert_to_billion_format() {
     local num=$1
@@ -61,7 +71,7 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_SATune_SATASSD_TwitterCluster${current_cluster_a}_PreLoad_Performance"
+    dir1="${i}B_RocksDB_SATASSD_TwitterCluster35_PreLoad_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -71,16 +81,16 @@ for i in {10..10}; do
             stats_interva=$((num_entries / 100))
             num_entries=1000000000
 
-            for cluster_a in $current_cluster_a; do  # 
+            for cluster_a in 35; do  # 
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
-                for num_kvs in 200000000 400000000 600000000 800000000 1000000000; do
+                for num_kvs in ${cluster_num_kvs_map[$cluster_a]}; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 4 8 10 16 32; do
+                for blk_size in 1 4 8 10 ; do
                 for blk_cache_size in 32 128 512 1024; do
-                for table_cache_size in 300 1000 5000 10000; do
+                for table_cache_size in 300 1000 5000; do
                     # buffer_size=67108864
                     # buffer_size=2097152
                     target_file_base=67108864
@@ -92,9 +102,9 @@ for i in {10..10}; do
                     value_size_twitter=${cluster_value_size_map[$cluster_a]}
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                    log_file="SATune_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
+                    log_file="RocksDB_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
                     data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                    memory_log_file="$(pwd)/SATune_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
+                    memory_log_file="$(pwd)/RocksDB_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -103,7 +113,7 @@ for i in {10..10}; do
                     fi
 
                     # 创建相应的目录
-                    db_dir="/mnt/workloads/SATune10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                    db_dir="/mnt/workloads/rocks10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -126,30 +136,37 @@ for i in {10..10}; do
                     echo "stats_interval: $stats_interva"
                     echo "$num_format"
                             
-                    ../../SATune/release/db_bench \
+                    ../../../rocksdb/release/db_bench \
                         --db=$db_dir \
-                        --max_bytes_for_level1_base=$level1_max_bytes \
+                        --max_bytes_for_level_base=$level1_max_bytes \
                         --num=$num_kvs \
-                        --max_bytes_for_level1_multiplier=10 \
                         --block_size=$block_size_write  \
+                        --perf_level=5   \
+                        --statistics=true \
+                        --use_direct_reads=true \
                         --key_size=$key_size_twitter \
-                        --value_size=$value_size_twitter \
+                        --value_size_=$value_size_twitter \
                         --batch_size=1 \
                         --benchmarks=fillcluster,stats \
-                        --data_file=$data_file  \
+                        --data_file_path=$data_file  \
                         --bloom_bits=10 \
                         --cache_size=8388608 \
-                        --level0_compaction_trigger=$ct0 \
+                        --use_direct_io_for_flush_and_compaction=true \
+                        --level0_file_num_compaction_trigger=$ct0 \
                         --level0_slowdown_writes_trigger=$slowdown_value \
                         --level0_stop_writes_trigger=$stop_value \
+                        --max_background_compactions=8 \
+                        --max_background_flushes=1 \
                         --open_files=80000 \
                         --compression_ratio=0 \
                         --stats_interval=$stats_interva \
+                        --stats_per_interval=$stats_interva \
                         --histogram=1 \
                         --use_existing_db=false \
                         --write_buffer_size=$buffer_size \
                         --mem_log_file=$memory_log_file \
-                        --file_size_generated_in_compaction=$target_file_base \
+                        --target_file_size_base=$target_file_base   \
+                        --compression_type=none \
                         &> >( tee $log_file) &  
 
                         # 保存 db_bench 的 PID 供监控使用
