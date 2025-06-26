@@ -308,6 +308,7 @@ CMakeFiles/leveldb_tests.dir/db/corruption_test.cc.o: \
  /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
  /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/l0_tuning.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/log_stats.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/filename.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_set.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_edit.h \

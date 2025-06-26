@@ -13,11 +13,11 @@ declare -A cluster_num_kvs_map
 
 
 cluster_num_kvs_map[13]="20000000 40000000 60000000 80000000 100000000"
-cluster_num_kvs_map[1]="200000000 400000000 600000000 800000000 1000000000"
-cluster_num_kvs_map[25]="200000000 400000000 600000000 800000000 1000000000"
-cluster_num_kvs_map[30]="200000000 400000000 600000000 800000000 1000000000"
-cluster_num_kvs_map[35]="200000000 400000000 600000000 800000000 1000000000"
-cluster_num_kvs_map[51]="200000000 400000000 600000000 800000000 1000000000"
+cluster_num_kvs_map[1]="200000000 600000000 1000000000 2000000000 3000000000"
+cluster_num_kvs_map[25]="200000000 600000000 1000000000 2000000000 3000000000"
+cluster_num_kvs_map[30]="200000000 600000000 1000000000 2000000000 3000000000"
+cluster_num_kvs_map[35]="200000000 600000000 1000000000 2000000000 3000000000"
+cluster_num_kvs_map[51]="200000000 600000000 1000000000 2000000000 3000000000"
 
 
 # 为不同的ct0值设定对应的slowdown和stop值
@@ -69,28 +69,26 @@ convert_to_billion_format() {
     fi
 }
 
-for i in {10..10}; do
-    base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_SATASSD_TwitterCluster35_PreLoad_Performance"
+for i in 1 25 30 35 51; do
+
+    dir1="RocksDB_SATASSD_TwitterCluster${i}_SATune_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
-        for value_size in 128; do
-            num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
-            stats_interva=$((num_entries / 100))
-            num_entries=1000000000
+        num_entries=1000000000
+        stats_interva=$((num_entries / 10))
 
-            for cluster_a in 35; do  # 
-                for ct0 in 4 ; do  # 
+            for cluster_a in "$i"; do  # 
+                for ct0 in 400000; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
                 for num_kvs in ${cluster_num_kvs_map[$cluster_a]}; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 4 8 10 ; do
-                for blk_cache_size in 32 128 512 1024; do
-                for table_cache_size in 300 1000 5000; do
+                for blk_size in 4; do
+                for blk_cache_size in 128; do
+                for table_cache_size in 1000; do
                     # buffer_size=67108864
                     # buffer_size=2097152
                     target_file_base=67108864
@@ -131,7 +129,6 @@ for i in {10..10}; do
 
                     echo "base_num: $base_num"
                     echo "num_entries: $num_entries"
-                    echo "value_size:$value_size_twitter"
                     echo "key_size:$key_size_twitter"
                     echo "stats_interval: $stats_interva"
                     echo "$num_format"
@@ -209,6 +206,5 @@ for i in {10..10}; do
                     done
                     done
                     done
-            done
         done
 done

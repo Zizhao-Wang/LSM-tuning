@@ -170,7 +170,10 @@ CMakeFiles/leveldb.dir/db/dumpfile.cc.o: \
  /usr/include/c++/11/bits/shared_ptr_atomic.h \
  /usr/include/c++/11/bits/atomic_base.h \
  /usr/include/c++/11/bits/atomic_lockfree_defines.h \
- /usr/include/c++/11/backward/auto_ptr.h \
+ /usr/include/c++/11/backward/auto_ptr.h /usr/include/c++/11/map \
+ /usr/include/c++/11/bits/stl_tree.h /usr/include/c++/11/bits/stl_map.h \
+ /usr/include/c++/11/bits/stl_multimap.h \
+ /usr/include/c++/11/bits/erase_if.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/filter_policy.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h \
@@ -196,10 +199,8 @@ CMakeFiles/leveldb.dir/db/dumpfile.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_reader.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_format.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/version_edit.h \
- /usr/include/c++/11/set /usr/include/c++/11/bits/stl_tree.h \
- /usr/include/c++/11/bits/stl_set.h \
+ /usr/include/c++/11/set /usr/include/c++/11/bits/stl_set.h \
  /usr/include/c++/11/bits/stl_multiset.h \
- /usr/include/c++/11/bits/erase_if.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/write_batch_internal.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/write_batch.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table.h

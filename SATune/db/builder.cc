@@ -17,12 +17,18 @@
 namespace leveldb {
 
 Status BuildTable(const std::string& dbname, Env* env, const Options& options,
-                  TableCache* table_cache, Iterator* iter, FileMetaData* meta) {
+  TableCache* table_cache, Iterator* iter, FileMetaData* meta) {
   Status s;
   meta->file_size = 0;
   iter->SeekToFirst();
 
   std::string fname = TableFileName(dbname, meta->number);
+  int total_keys = 0;
+  int unique_keys = 0;  
+  int unique_key_num = 0;
+  std::string last_user_key_storage; // 用 string 来安全存储上一个唯一 Key 的数据
+  std::vector<int> frequency_vector;
+
   if (iter->Valid()) {
     WritableFile* file;
     s = env->NewWritableFile(fname, &file);
@@ -35,8 +41,31 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
     Slice key;
     for (; iter->Valid(); iter->Next()) {
       key = iter->key();
-      builder->Add(key, iter->value());
+      total_keys++;
+
+      Slice current_user_key(key.data(), key.size() - 8);
+
+      if (last_user_key_storage.empty() || Slice(last_user_key_storage).compare(current_user_key) != 0) {
+        
+        if (!last_user_key_storage.empty()) {
+          frequency_vector.emplace_back(unique_key_num);
+        }
+
+        builder->Add(key, iter->value());
+        unique_keys++;
+
+        last_user_key_storage.assign(current_user_key.data(), current_user_key.size());
+        unique_key_num = 1;
+
+      }else{
+        unique_key_num++;
+      }
     }
+
+    if (!last_user_key_storage.empty()) {
+      frequency_vector.emplace_back(unique_key_num);
+    }
+
     if (!key.empty()) {
       meta->largest.DecodeFrom(key);
     }
@@ -61,8 +90,7 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
 
     if (s.ok()) {
       // Verify that the table is usable
-      Iterator* it = table_cache->NewIterator(ReadOptions(), meta->number,
-                                              meta->file_size);
+      Iterator* it = table_cache->NewIterator(ReadOptions(), meta->number,meta->file_size,0);
       s = it->status();
       delete it;
     }
@@ -82,7 +110,9 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
 }
 
 
-Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options& options,
+
+
+Status BuildTable2(const std::string& dbname, Env* env, const Options& options,
   TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total) {
   Status s;
   meta->file_size = 0;
@@ -90,10 +120,9 @@ Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options
 
   std::string fname = TableFileName(dbname, meta->number);
   int total_keys = 0;
-  int unique_keys = 1;
+  int unique_keys = 0;  
   int unique_key_num = 0;
   std::string last_user_key_storage; // 用 string 来安全存储上一个唯一 Key 的数据
-  last_user_key_storage.assign(iter->key().data(), iter->key().size()-8);
   std::vector<int> frequency_vector;
 
   if (iter->Valid()) {
@@ -108,25 +137,31 @@ Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options
     Slice key;
     for (; iter->Valid(); iter->Next()) {
       key = iter->key();
-      builder->Add(key, iter->value());
-
       total_keys++;
-      unique_key_num++;
 
-      // --- 计算频率 ---
-      // 1. 提取 User Key (不创建 string)
-      //    (再次提醒：确认 key.size() - 8 是正确的 InternalKey 格式)
       Slice current_user_key(key.data(), key.size() - 8);
-      if (Slice(last_user_key_storage).compare(current_user_key) != 0) {
-        unique_keys++;
-        // 3. 只有当 Key 变化时，才更新 string 存储 (创建/复制 string)
-        last_user_key_storage.assign(current_user_key.data(), current_user_key.size());
-        frequency_vector.emplace_back(unique_key_num);
-        unique_key_num = 1;
-      }
-      // --- 结束计算 ---
 
+      if (last_user_key_storage.empty() || Slice(last_user_key_storage).compare(current_user_key) != 0) {
+        
+        if (!last_user_key_storage.empty()) {
+          frequency_vector.emplace_back(unique_key_num);
+        }
+
+        builder->Add(key, iter->value());
+        unique_keys++;
+
+        last_user_key_storage.assign(current_user_key.data(), current_user_key.size());
+        unique_key_num = 1;
+
+      }else{
+        unique_key_num++;
+      }
     }
+
+    if (!last_user_key_storage.empty()) {
+      frequency_vector.emplace_back(unique_key_num);
+    }
+
     if (!key.empty()) {
       meta->largest.DecodeFrom(key);
     }
@@ -152,7 +187,102 @@ Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options
     if (s.ok()) {
       // Verify that the table is usable
       Iterator* it = table_cache->NewIterator(ReadOptions(), meta->number,
-                                              meta->file_size);
+                                              meta->file_size,0);
+      s = it->status();
+      delete it;
+    }
+  }
+
+  // Check for input iterator errors
+  if (!iter->status().ok()) {
+    s = iter->status();
+  }
+
+  if (s.ok() && meta->file_size > 0) {
+    // Keep it
+  } else {
+    env->RemoveFile(fname);
+  }
+  return s;
+}
+
+
+Status BuildTableWithVarianceWiMerge(const std::string& dbname, Env* env, const Options& options,
+  TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total) {
+  Status s;
+  meta->file_size = 0;
+  iter->SeekToFirst();
+
+  std::string fname = TableFileName(dbname, meta->number);
+  int total_keys = 0;
+  int unique_keys = 0;  
+  int unique_key_num = 0;
+  std::string last_user_key_storage; // 用 string 来安全存储上一个唯一 Key 的数据
+  std::vector<int> frequency_vector;
+
+  if (iter->Valid()) {
+    WritableFile* file;
+    s = env->NewWritableFile(fname, &file);
+    if (!s.ok()) {
+      return s;
+    }
+
+    TableBuilder* builder = new TableBuilder(options, file);
+    meta->smallest.DecodeFrom(iter->key());
+    Slice key;
+    for (; iter->Valid(); iter->Next()) {
+      key = iter->key();
+      total_keys++;
+
+      Slice current_user_key(key.data(), key.size() - 8);
+
+      if (last_user_key_storage.empty() || Slice(last_user_key_storage).compare(current_user_key) != 0) {
+        
+        if (!last_user_key_storage.empty()) {
+          frequency_vector.emplace_back(unique_key_num);
+        }
+
+        builder->Add(key, iter->value());
+        unique_keys++;
+
+        last_user_key_storage.assign(current_user_key.data(), current_user_key.size());
+        unique_key_num = 1;
+
+      }else{
+        unique_key_num++;
+      }
+    }
+
+    if (!last_user_key_storage.empty()) {
+      frequency_vector.emplace_back(unique_key_num);
+    }
+
+    if (!key.empty()) {
+      meta->largest.DecodeFrom(key);
+    }
+
+    // Finish and check for builder errors
+    s = builder->Finish();
+    if (s.ok()) {
+      meta->file_size = builder->FileSize();
+      assert(meta->file_size > 0);
+    }
+    delete builder;
+
+    // Finish and check for file errors
+    if (s.ok()) {
+      s = file->Sync();
+    }
+    if (s.ok()) {
+      s = file->Close();
+    }
+    delete file;
+    file = nullptr;
+
+    if (s.ok()) {
+      // Verify that the table is usable
+      Iterator* it = table_cache->NewIterator(ReadOptions(), meta->number,
+                                              meta->file_size,0);
       s = it->status();
       delete it;
     }
@@ -193,6 +323,127 @@ Status BuildTableWithVariance(const std::string& dbname, Env* env, const Options
   }
   return s;
 }
+
+
+
+
+Status BuildTableWithVarianceWoMerge(const std::string& dbname, Env* env, const Options& options,
+  TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total) {
+  Status s;
+  meta->file_size = 0;
+  iter->SeekToFirst();
+
+  std::string fname = TableFileName(dbname, meta->number);
+  int total_keys = 0;
+  int unique_keys = 0;  
+  int unique_key_num = 0;
+  std::string last_user_key_storage; // 用 string 来安全存储上一个唯一 Key 的数据
+  std::vector<int> frequency_vector;
+
+  if (iter->Valid()) {
+    WritableFile* file;
+    s = env->NewWritableFile(fname, &file);
+    if (!s.ok()) {
+      return s;
+    }
+
+    TableBuilder* builder = new TableBuilder(options, file);
+    meta->smallest.DecodeFrom(iter->key());
+    Slice key;
+
+    for (; iter->Valid(); iter->Next()) {
+
+      key = iter->key();
+      total_keys++;
+      builder->Add(key, iter->value());
+
+      Slice current_user_key(key.data(), key.size() - 8);
+      if (last_user_key_storage.empty() 
+          || Slice(last_user_key_storage).compare(current_user_key) != 0) {
+
+        if (!last_user_key_storage.empty()) {
+          frequency_vector.emplace_back(unique_key_num);
+        }
+        unique_keys++;
+        last_user_key_storage.assign(current_user_key.data(), current_user_key.size());
+        unique_key_num = 1;
+
+      }else{
+        unique_key_num++;
+      }
+    }
+
+    if (!last_user_key_storage.empty()) {
+      frequency_vector.emplace_back(unique_key_num);
+    }
+
+    if (!key.empty()) {
+      meta->largest.DecodeFrom(key);
+    }
+
+    // Finish and check for builder errors
+    s = builder->Finish();
+    if (s.ok()) {
+      meta->file_size = builder->FileSize();
+      assert(meta->file_size > 0);
+    }
+    delete builder;
+
+    // Finish and check for file errors
+    if (s.ok()) {
+      s = file->Sync();
+    }
+    if (s.ok()) {
+      s = file->Close();
+    }
+    delete file;
+    file = nullptr;
+
+    if (s.ok()) {
+      // Verify that the table is usable
+      Iterator* it = table_cache->NewIterator(ReadOptions(), meta->number,
+                                              meta->file_size,0);
+      s = it->status();
+      delete it;
+    }
+  }
+
+  // Check for input iterator errors
+  if (!iter->status().ok()) {
+    s = iter->status();
+  }
+
+  // --- 计算方差 ---
+  *table_total = total_keys;
+  *tlb_unique = unique_keys;
+  *variance_output = 0.0;
+  if (s.ok() && !frequency_vector.empty()) {
+    double sum_freq = 0.0;
+    double sum_freq_sq = 0.0;
+    int unique_keys = frequency_vector.size();
+
+    for (const auto& pair : frequency_vector) {
+      sum_freq += pair; // pair.second 是频率
+      sum_freq_sq += std::pow(pair, 2);
+    }
+
+    // 注意：这里的 total_keys 应该等于 sum_freq
+    // assert(total_keys == static_cast<int>(sum_freq)); 
+
+    double mean = sum_freq / unique_keys;
+    double mean_sq = sum_freq_sq / unique_keys;
+
+    *variance_output = mean_sq - std::pow(mean, 2); // 方差 = E[X^2] - (E[X])^2
+  }
+
+  if (s.ok() && meta->file_size > 0) {
+    // Keep it
+  } else {
+    env->RemoveFile(fname);
+  }
+  return s;
+}
+
 
 Status BuildTableWithDiscardCount(const std::string& dbname, Env* env,const Options& options,
       TableCache* table_cache, Iterator* iter,FileMetaData* meta,int* discarded_count_output) { // 输出参数：可抛弃数量
@@ -259,7 +510,7 @@ Status BuildTableWithDiscardCount(const std::string& dbname, Env* env,const Opti
     if (s.ok()) {
       // Verify that the table is usable
       Iterator* it = table_cache->NewIterator(ReadOptions(), meta->number,
-                                              meta->file_size);
+                                              meta->file_size,0);
       s = it->status();
       delete it;
     }

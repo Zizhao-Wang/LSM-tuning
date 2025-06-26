@@ -216,6 +216,7 @@ CMakeFiles/leveldb.dir/db/db_impl.cc.o: \
  /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
  /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/l0_tuning.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/log_stats.h \
  /usr/include/c++/11/fstream /usr/include/c++/11/istream \
  /usr/include/c++/11/ios /usr/include/c++/11/bits/ios_base.h \
  /usr/include/c++/11/bits/locale_classes.h \
@@ -240,7 +241,7 @@ CMakeFiles/leveldb.dir/db/db_impl.cc.o: \
  /usr/include/x86_64-linux-gnu/c++/11/bits/time_members.h \
  /usr/include/x86_64-linux-gnu/c++/11/bits/messages_members.h \
  /usr/include/libintl.h /usr/include/c++/11/bits/locale_facets_nonio.tcc \
- /usr/include/c++/11/bits/locale_conv.h \
+ /usr/include/c++/11/bits/locale_conv.h /usr/include/inttypes.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/builder.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/db_iter.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/filename.h \

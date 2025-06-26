@@ -168,6 +168,164 @@ class PosixSequentialFile final : public SequentialFile {
   const std::string filename_;
 };
 
+class PosixDirectIOSequentialFile final : public SequentialFile {
+ public:
+
+  PosixDirectIOSequentialFile(std::string filename, int fd)
+    : fd_(fd), filename_(std::move(filename)), buffer_offset_(0), buffer_size_(0), file_offset_(0) {
+    // Allocate memory that is aligned to the block size.
+    alignment_ = GetPageSize();
+    aligned_buffer_size_ = AlignUp(kDefaultReadSize, alignment_);
+    
+    // 分配对齐的内存缓冲区
+    if (posix_memalign(reinterpret_cast<void**>(&aligned_buffer_), alignment_, aligned_buffer_size_) != 0) {
+      aligned_buffer_ = nullptr;
+    }
+  }
+
+
+  ~PosixDirectIOSequentialFile() override {
+    if (aligned_buffer_) {
+      free(aligned_buffer_);
+    }
+    close(fd_);
+  }
+
+  // 磁盘文件 (File on Disk):
+  // | ... | Block 0 (0-4095) | Block 1 (4096-8191) | Block 2 (8192-...) |
+  // +-----+------------------+---------------------+--------------------+
+  //                          ^
+  //                          |
+  //            aligned_file_offset_ = 4096 (物理读取起点)
+  //                          |
+  //                          +-------------------------------------------------+
+  //                                                                            |
+  //                                             pread()                      V
+  // 内存中的仓库 (aligned_buffer_ in Memory):
+  // +--------------------------------------------------------------------------+
+  // |      Data from disk starting at 4096...                                  |
+  // +--------------------------------------------------------------------------+
+  // ^
+  // |
+  // aligned_buffer_ (仓库起点)
+
+  Status Read(size_t n, Slice* result, char* scratch) override {
+    if (!aligned_buffer_) {
+      return Status::IOError("Failed to allocate aligned buffer for Direct I/O");
+    }
+
+    size_t bytes_copied = 0;
+    
+    while (bytes_copied < n) {
+      // 检查是否需要重新填充缓冲区
+      if (buffer_offset_ >= buffer_size_) {
+        Status fill_status = FillBuffer();
+        if (!fill_status.ok()) {
+          if (bytes_copied > 0) {
+            break; // 返回已读取的数据
+          }
+          return fill_status;
+        }
+        if (buffer_size_ == 0) {
+          break; // EOF
+        }
+      }
+
+      // 从内部缓冲区复制数据到用户缓冲区
+      size_t bytes_available = buffer_size_ - buffer_offset_;
+      size_t bytes_to_copy = std::min(n - bytes_copied, bytes_available);
+      
+      memcpy(scratch + bytes_copied, effective_buffer_ + buffer_offset_, bytes_to_copy);
+      buffer_offset_ += bytes_to_copy;
+      bytes_copied += bytes_to_copy;
+      file_offset_ += bytes_to_copy;
+    }
+
+    *result = Slice(scratch, bytes_copied);
+    return Status::OK();
+  }
+
+  Status Skip(uint64_t n) override {
+    file_offset_ += n;
+    
+    // 检查跳跃是否超出当前缓冲区
+    uint64_t buffer_start = aligned_file_offset_;
+    uint64_t buffer_end = buffer_start + buffer_size_;
+    
+    if (file_offset_ < buffer_start || file_offset_ >= buffer_end) {
+      // 跳跃超出当前缓冲区范围，标记需要重新加载
+      buffer_offset_ = buffer_size_;
+    } else {
+      // 跳跃在当前缓冲区内，调整偏移
+      buffer_offset_ = file_offset_ - buffer_start;
+    }
+    
+    return Status::OK();
+  }
+
+ private:
+  const int fd_;
+  const std::string filename_;
+
+  // Direct I/O 相关成员
+  char* aligned_buffer_ = nullptr;
+  char* effective_buffer_ = nullptr;  // 指向有效数据的起始位置
+  size_t alignment_ = 0;
+  size_t aligned_buffer_size_ = 0;
+  
+  // 缓冲区管理
+  size_t buffer_offset_ = 0;      // 当前读取位置在缓冲区中的偏移
+  size_t buffer_size_ = 0;        // 缓冲区中有效数据的大小
+  uint64_t file_offset_ = 0;      // 当前文件读取位置
+  uint64_t aligned_file_offset_ = 0; // 对齐后的文件读取位置
+  static constexpr size_t kDefaultReadSize = 64 * 1024; // 64KB
+
+  Status FillBuffer() {
+
+    aligned_file_offset_ = AlignDown(file_offset_, alignment_);
+    while (true) {
+      ::ssize_t bytes_read = ::pread(fd_, aligned_buffer_, aligned_buffer_size_, aligned_file_offset_);
+      if (bytes_read < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        return PosixError(filename_, errno);
+      }
+
+      if (bytes_read == 0) {
+        // EOF
+        buffer_size_ = 0;
+        buffer_offset_ = 0;
+        effective_buffer_ = aligned_buffer_;
+        return Status::OK();
+      }
+
+      // 计算有效数据的起始位置和大小
+      size_t data_offset = file_offset_ - aligned_file_offset_;
+      effective_buffer_ = aligned_buffer_ + data_offset;
+      buffer_size_ = std::max(0L, bytes_read - static_cast<ssize_t>(data_offset));
+      buffer_offset_ = 0;
+      
+      break;
+    }
+
+    return Status::OK();
+  }
+
+  static size_t GetPageSize() {
+    return sysconf(_SC_PAGESIZE);
+  }
+
+  static size_t AlignUp(size_t value, size_t alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+  }
+
+  static uint64_t AlignDown(uint64_t value, size_t alignment) {
+    return value & ~(alignment - 1);
+  }
+};
+
+
 // Implements random read access in a file using pread().
 //
 // Instances of this class are thread-safe, as required by the RandomAccessFile
@@ -210,26 +368,10 @@ class PosixRandomAccessFile final : public RandomAccessFile {
 
     Status status;
     ssize_t read_size;
-#ifdef USE_O_DIRECT
-    if (use_dio_) {
-      ssize_t real_offset = offset / logical_sector_size_ * logical_sector_size_;
-      ssize_t real_n = (n + offset - real_offset + logical_sector_size_ - 1) / logical_sector_size_ * logical_sector_size_;
-      //auto start = high_resolution_clock::now();
-      read_size = ::pread(fd, scratch, real_n, static_cast<off_t>(real_offset));
-      std::memmove(scratch, scratch + offset - real_offset, std::min(n, read_size - (offset - real_offset)));
-      //fprintf(stderr, "PREAD: time %llu ns\n", duration_cast<nanoseconds>(high_resolution_clock::now() - start).count());
-      *result = Slice(scratch, std::min(n, read_size - (offset - real_offset)));  
-    } else {
-      read_size = ::pread(fd, scratch, n, static_cast<off_t>(offset));
-      *result = Slice(scratch, read_size);  
-    }
-#else
-      read_size = ::pread(fd, scratch, n, static_cast<off_t>(offset));
-      *result = Slice(scratch, read_size);  
-#endif
+ 
+    read_size = ::pread(fd, scratch, n, static_cast<off_t>(offset));
+    *result = Slice(scratch, read_size);  
 
-    // ssize_t read_size = ::pread(fd, scratch, n, static_cast<off_t>(offset));
-    // *result = Slice(scratch, (read_size < 0) ? 0 : read_size);
     if (read_size < 0) {
       // An error: return a non-ok status.
       status = PosixError(filename_, errno);
@@ -248,6 +390,137 @@ class PosixRandomAccessFile final : public RandomAccessFile {
   Limiter* const fd_limiter_;
   const std::string filename_;
 };
+
+class PosixDirectIORandomAccessFile final : public RandomAccessFile {
+ public:
+  PosixDirectIORandomAccessFile(std::string filename, int fd, Limiter* fd_limiter)
+  : has_permanent_fd_(fd_limiter->Acquire()),fd_(has_permanent_fd_ ? fd : -1),
+    fd_limiter_(fd_limiter),filename_(std::move(filename)) {
+    // 初始化 Direct I/O 相关参数
+    alignment_ = GetPageSize();
+    aligned_buffer_size_ = AlignUp(kDefaultReadSize, alignment_);
+    
+    if (!has_permanent_fd_) {
+      assert(fd_ == -1);
+      ::close(fd);  // 每次读取时重新打开文件
+    }
+  }
+
+  ~PosixDirectIORandomAccessFile() override {
+    if (has_permanent_fd_) {
+      assert(fd_ != -1);
+      ::close(fd_);
+      fd_limiter_->Release();
+    }
+  }
+
+  Status Read(uint64_t offset, size_t n, Slice* result,
+              char* scratch) const override {
+    int fd = fd_;
+    bool need_close = false;
+    
+    // 如果没有永久文件描述符，需要临时打开文件
+    if (!has_permanent_fd_) {
+      fd = ::open(filename_.c_str(), O_RDONLY | O_DIRECT | kOpenBaseFlags);
+      if (fd < 0) {
+        return PosixError(filename_, errno);
+      }
+      need_close = true;
+    }
+
+    assert(fd != -1);
+
+    Status status = DirectRead(fd, offset, n, result, scratch);
+
+    if (need_close) {
+      assert(fd != fd_);
+      ::close(fd);
+    }
+    
+    return status;
+  }
+
+ private:
+  const bool has_permanent_fd_;
+  const int fd_;
+  Limiter* const fd_limiter_;
+  const std::string filename_;
+  
+  // Direct I/O 相关参数
+  mutable size_t alignment_ = 0;
+  mutable size_t aligned_buffer_size_ = 0;
+  
+  static constexpr size_t kDefaultReadSize = 64 * 1024; // 64KB
+
+  // Direct I/O 读取实现
+  Status DirectRead(int fd, uint64_t offset, size_t n, Slice* result, char* scratch) const {
+    char* aligned_buffer = nullptr;
+    if (posix_memalign(reinterpret_cast<void**>(&aligned_buffer), 
+                      alignment_, aligned_buffer_size_) != 0) {
+      return Status::IOError("Failed to allocate aligned buffer for Direct I/O");
+    }
+    
+    // 使用 RAII 管理内存
+    std::unique_ptr<char, decltype(&free)> buffer_guard(aligned_buffer, &free);
+
+    // 计算对齐的读取参数
+    uint64_t aligned_offset = AlignDown(offset, alignment_);
+    size_t prefix_length = offset - aligned_offset;
+    size_t aligned_read_size = AlignUp(prefix_length + n, alignment_);
+    
+    // 确保不超过缓冲区大小
+    aligned_read_size = std::min(aligned_read_size, aligned_buffer_size_);
+
+    Status status;
+    ssize_t bytes_read = 0;
+    
+    while (true) {
+      bytes_read = ::pread(fd, aligned_buffer, aligned_read_size, 
+                          static_cast<off_t>(aligned_offset));
+      if (bytes_read < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        status = PosixError(filename_, errno);
+        break;
+      }
+      break;
+    }
+
+    if (!status.ok()) {
+      return status;
+    }
+
+    // 计算实际可用的数据
+    if (bytes_read <= static_cast<ssize_t>(prefix_length)) {
+      // 读取的数据不足以覆盖请求的偏移
+      *result = Slice(scratch, 0);
+      return Status::OK();
+    }
+
+    size_t available_data = bytes_read - prefix_length;
+    size_t copy_size = std::min(n, available_data);
+    
+    // 从对齐缓冲区复制数据到用户缓冲区
+    memcpy(scratch, aligned_buffer + prefix_length, copy_size);
+    *result = Slice(scratch, copy_size);
+
+    return Status::OK();
+  }
+
+  static size_t GetPageSize() {
+    return sysconf(_SC_PAGESIZE);
+  }
+
+  static size_t AlignUp(size_t value, size_t alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+  }
+
+  static uint64_t AlignDown(uint64_t value, size_t alignment) {
+    return value & ~(alignment - 1);
+  }
+};
+
 
 // Implements random read access in a file using mmap().
 //
@@ -300,7 +573,8 @@ class PosixWritableFile final : public WritableFile {
         fd_(fd),
         is_manifest_(IsManifest(filename)),
         filename_(std::move(filename)),
-        dirname_(Dirname(filename_)) {}
+        dirname_(Dirname(filename_)),
+        file_offset_(0)  {}
 
   ~PosixWritableFile() override {
     if (fd_ >= 0) {
@@ -369,14 +643,23 @@ class PosixWritableFile final : public WritableFile {
     return SyncFd(fd_, filename_);
   }
 
+  uint64_t GetFileSize() const override {
+    return file_offset_ + pos_;
+  }
+
  private:
   Status FlushBuffer() {
     Status status = WriteUnbuffered(buf_, pos_);
     pos_ = 0;
+
+    if (status.ok()) {
+      file_offset_ += pos_;  
+    }
     return status;
   }
 
   Status WriteUnbuffered(const char* data, size_t size) {
+    size_t original_size = size;
     while (size > 0) {
       ssize_t write_result = ::write(fd_, data, size);
       if (write_result < 0) {
@@ -388,6 +671,7 @@ class PosixWritableFile final : public WritableFile {
       data += write_result;
       size -= write_result;
     }
+    file_offset_ += original_size;
     return Status::OK();
   }
 
@@ -477,10 +761,269 @@ class PosixWritableFile final : public WritableFile {
   char buf_[kWritableFileBufferSize];
   size_t pos_;
   int fd_;
+  uint64_t file_offset_;
 
   const bool is_manifest_;  // True if the file's name starts with MANIFEST.
   const std::string filename_;
   const std::string dirname_;  // The directory of filename_.
+};
+
+
+class PosixDirectIOWritableFile final : public WritableFile {
+ public:
+  PosixDirectIOWritableFile(std::string filename, int fd)
+      : pos_(0),
+        fd_(fd),
+        is_manifest_(IsManifest(filename)),
+        filename_(std::move(filename)),
+        dirname_(Dirname(filename_)),
+        file_offset_(0) {
+    
+    // 初始化 Direct I/O 相关参数
+    alignment_ = GetPageSize();
+    aligned_buffer_size_ = AlignUp(kWritableFileBufferSize, alignment_);
+    
+    // 分配对齐的缓冲区
+    if (posix_memalign(reinterpret_cast<void**>(&aligned_buf_), 
+                      alignment_, aligned_buffer_size_) != 0) {
+      aligned_buf_ = nullptr;
+    }
+  }
+
+  ~PosixDirectIOWritableFile() override {
+    if (fd_ >= 0) {
+      // Ignoring any potential errors
+      Close();
+    }
+    if (aligned_buf_) {
+      free(aligned_buf_);
+    }
+  }
+
+  Status Append(const Slice& data) override {
+    if (!aligned_buf_) {
+      return Status::IOError("Failed to allocate aligned buffer for Direct I/O");
+    }
+
+    size_t write_size = data.size();
+    const char* write_data = data.data();
+
+    // 尽可能放入缓冲区
+    size_t copy_size = std::min(write_size, aligned_buffer_size_ - pos_);
+    std::memcpy(aligned_buf_ + pos_, write_data, copy_size);
+    write_data += copy_size;
+    write_size -= copy_size;
+    pos_ += copy_size;
+
+    if (write_size == 0) {
+      return Status::OK();
+    }
+
+    // 缓冲区满了，需要先刷新
+    Status status = FlushBuffer();
+    if (!status.ok()) {
+      return status;
+    }
+
+    // 小的写入放入缓冲区，大的写入直接写
+    if (write_size < aligned_buffer_size_) {
+      std::memcpy(aligned_buf_, write_data, write_size);
+      pos_ = write_size;
+      return Status::OK();
+    }
+    
+    return WriteUnbufferedAligned(write_data, write_size);
+  }
+
+  Status Close() override {
+    Status status = FlushBuffer();
+    const int close_result = ::close(fd_);
+    if (close_result < 0 && status.ok()) {
+      status = PosixError(filename_, errno);
+    }
+    fd_ = -1;
+    return status;
+  }
+
+  Status Flush() override { 
+    return FlushBuffer(); 
+  }
+
+  Status Sync() override {
+    // 确保 manifest 引用的新文件已在文件系统中
+    Status status = SyncDirIfManifest();
+    if (!status.ok()) {
+      return status;
+    }
+
+    status = FlushBuffer();
+    if (!status.ok()) {
+      return status;
+    }
+
+    return SyncFd(fd_, filename_);
+  }
+
+  uint64_t GetFileSize() const override {
+    return file_offset_ + pos_;
+  }
+
+ private:
+  // Direct I/O 相关成员变量
+  char* aligned_buf_ = nullptr;
+  size_t alignment_ = 0;
+  size_t aligned_buffer_size_ = 0;
+  uint64_t file_offset_ = 0;  // 当前文件写入位置
+  
+  // 原有成员变量
+  size_t pos_;  // 缓冲区中的当前位置
+  int fd_;
+  const bool is_manifest_;
+  const std::string filename_;
+  const std::string dirname_;
+
+  Status FlushBuffer() {
+    if (pos_ == 0) {
+      return Status::OK();
+    }
+
+    Status status = WriteBufferAligned();
+    pos_ = 0;
+    return status;
+  }
+
+  // 写入对齐的缓冲区数据
+  Status WriteBufferAligned() {
+    if (pos_ == 0) {
+      return Status::OK();
+    }
+
+    // 对于 Direct I/O，需要写入对齐的大小
+    size_t aligned_write_size = AlignUp(pos_, alignment_);
+    
+    // 如果需要，用零填充到对齐边界
+    if (aligned_write_size > pos_) {
+      memset(aligned_buf_ + pos_, 0, aligned_write_size - pos_);
+    }
+
+    Status status = WriteUnbuffered(aligned_buf_, aligned_write_size);
+    if (status.ok()) {
+      file_offset_ += pos_; // 只增加实际数据的大小
+    }
+    return status;
+  }
+
+  // 写入大块对齐数据
+  Status WriteUnbufferedAligned(const char* data, size_t size) {
+    // 对于大的写入，我们需要处理对齐
+    size_t remaining = size;
+    const char* current_data = data;
+
+    while (remaining > 0) {
+      size_t chunk_size = std::min(remaining, aligned_buffer_size_);
+      
+      // 复制数据到对齐缓冲区
+      memcpy(aligned_buf_, current_data, chunk_size);
+      
+      // 如果不是对齐大小，用零填充
+      size_t aligned_chunk_size = AlignUp(chunk_size, alignment_);
+      if (aligned_chunk_size > chunk_size) {
+        memset(aligned_buf_ + chunk_size, 0, aligned_chunk_size - chunk_size);
+      }
+
+      Status status = WriteUnbuffered(aligned_buf_, aligned_chunk_size);
+      if (!status.ok()) {
+        return status;
+      }
+
+      file_offset_ += chunk_size; // 只增加实际数据的大小
+      current_data += chunk_size;
+      remaining -= chunk_size;
+    }
+
+    return Status::OK();
+  }
+
+  Status WriteUnbuffered(const char* data, size_t size) {
+    while (size > 0) {
+      ssize_t write_result = ::write(fd_, data, size);
+      if (write_result < 0) {
+        if (errno == EINTR) {
+          continue;  // Retry
+        }
+        return PosixError(filename_, errno);
+      }
+      data += write_result;
+      size -= write_result;
+    }
+    return Status::OK();
+  }
+
+  Status SyncDirIfManifest() {
+    Status status;
+    if (!is_manifest_) {
+      return status;
+    }
+
+    int fd = ::open(dirname_.c_str(), O_RDONLY | kOpenBaseFlags);
+    if (fd < 0) {
+      status = PosixError(dirname_, errno);
+    } else {
+      status = SyncFd(fd, dirname_);
+      ::close(fd);
+    }
+    return status;
+  }
+
+  static Status SyncFd(int fd, const std::string& fd_path) {
+#if HAVE_FULLFSYNC
+    if (::fcntl(fd, F_FULLFSYNC) == 0) {
+      return Status::OK();
+    }
+#endif  // HAVE_FULLFSYNC
+
+#if HAVE_FDATASYNC
+    bool sync_success = ::fdatasync(fd) == 0;
+#else
+    bool sync_success = ::fsync(fd) == 0;
+#endif  // HAVE_FDATASYNC
+
+    if (sync_success) {
+      return Status::OK();
+    }
+    return PosixError(fd_path, errno);
+  }
+
+  static std::string Dirname(const std::string& filename) {
+    std::string::size_type separator_pos = filename.rfind('/');
+    if (separator_pos == std::string::npos) {
+      return std::string(".");
+    }
+    assert(filename.find('/', separator_pos + 1) == std::string::npos);
+    return filename.substr(0, separator_pos);
+  }
+
+  static Slice Basename(const std::string& filename) {
+    std::string::size_type separator_pos = filename.rfind('/');
+    if (separator_pos == std::string::npos) {
+      return Slice(filename);
+    }
+    assert(filename.find('/', separator_pos + 1) == std::string::npos);
+    return Slice(filename.data() + separator_pos + 1,
+                 filename.length() - separator_pos - 1);
+  }
+
+  static bool IsManifest(const std::string& filename) {
+    return Basename(filename).starts_with("MANIFEST");
+  }
+
+  static size_t GetPageSize() {
+    return sysconf(_SC_PAGESIZE);
+  }
+
+  static size_t AlignUp(size_t value, size_t alignment) {
+    return (value + alignment - 1) & ~(alignment - 1);
+  }
 };
 
 int LockOrUnlock(int fd, bool lock) {
@@ -545,32 +1088,44 @@ class PosixEnv : public Env {
   }
 
   Status NewSequentialFile(const std::string& filename,
-                           SequentialFile** result) override {
-    int fd = ::open(filename.c_str(), O_RDONLY | kOpenBaseFlags);
+                           SequentialFile** result, bool user_direct_io) override {
+    int flags = O_RDONLY | kOpenBaseFlags;
+    if (user_direct_io) { 
+      flags |= O_DIRECT;
+    }
+
+    int fd = ::open(filename.c_str(), flags);
     if (fd < 0) {
       *result = nullptr;
       return PosixError(filename, errno);
     }
 
-    *result = new PosixSequentialFile(filename, fd);
+    if(!user_direct_io){
+      *result = new PosixSequentialFile(filename, fd);
+    }else{
+      *result = new PosixDirectIOSequentialFile(filename, fd);
+    }
+
     return Status::OK();
   }
 
   Status NewRandomAccessFile(const std::string& filename,
-                             RandomAccessFile** result) override {
-  *result = nullptr;
-  #ifdef USE_O_DIRECT
-    int fd = ::open(filename.c_str(), O_RDONLY | kOpenBaseFlags | O_DIRECT);
-  #else 
-    int fd = ::open(filename.c_str(), O_RDONLY | kOpenBaseFlags);
-  #endif
+                             RandomAccessFile** result, bool user_direct_io) override {
+    *result = nullptr;
+    int flags = O_RDONLY | kOpenBaseFlags;
+    if (user_direct_io) { 
+      flags |= O_DIRECT;
+    }
 
+    int fd = ::open(filename.c_str(), flags);
     if (fd < 0) {
       return PosixError(filename, errno);
     }
 
-    // *result = new PosixRandomAccessFile(filename, fd, &fd_limiter_);
-    // return Status::OK();
+    if (user_direct_io) {
+      *result = new PosixDirectIORandomAccessFile(filename, fd, &fd_limiter_);
+      return Status::OK();
+    }
 
     if (!mmap_limiter_.Acquire()) {
       *result = new PosixRandomAccessFile(filename, fd, &fd_limiter_);
@@ -597,29 +1152,51 @@ class PosixEnv : public Env {
     return status;
   }
 
+
+
   Status NewWritableFile(const std::string& filename,
-                         WritableFile** result) override {
-    int fd = ::open(filename.c_str(),
-                    O_TRUNC | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
+    WritableFile** result, bool user_direct_io = false) override {
+                       
+    int flags = O_TRUNC | O_WRONLY | O_CREAT | kOpenBaseFlags;
+    if (user_direct_io) {
+      flags |= O_DIRECT;
+    }
+
+    int fd = ::open(filename.c_str(), flags, 0644);
     if (fd < 0) {
       *result = nullptr;
       return PosixError(filename, errno);
     }
 
-    *result = new PosixWritableFile(filename, fd);
+    if (user_direct_io) {
+      *result = new PosixDirectIOWritableFile(filename, fd);
+    } else {
+      *result = new PosixWritableFile(filename, fd);
+    }
+    
     return Status::OK();
   }
 
   Status NewAppendableFile(const std::string& filename,
-                           WritableFile** result) override {
-    int fd = ::open(filename.c_str(),
-                    O_APPEND | O_WRONLY | O_CREAT | kOpenBaseFlags, 0644);
+      WritableFile** result, bool user_direct_io = false) override {
+    
+    int flags = O_TRUNC | O_WRONLY | O_CREAT | kOpenBaseFlags;
+    if (user_direct_io) {
+      flags |= O_DIRECT;
+    }
+
+    int fd = ::open(filename.c_str(), flags, 0644);
     if (fd < 0) {
       *result = nullptr;
       return PosixError(filename, errno);
     }
 
-    *result = new PosixWritableFile(filename, fd);
+    if (user_direct_io) {
+      *result = new PosixDirectIOWritableFile(filename, fd);
+    } else {
+      *result = new PosixWritableFile(filename, fd);
+    }
+    
     return Status::OK();
   }
 
@@ -817,6 +1394,7 @@ class PosixEnv : public Env {
   PosixLockTable locks_;  // Thread-safe.
   Limiter mmap_limiter_;  // Thread-safe.
   Limiter fd_limiter_;    // Thread-safe.
+  bool use_direct_io_;
 };
 
 // Return the maximum number of concurrent mmaps.
@@ -888,7 +1466,7 @@ void PosixEnv::Schedule(
   if (!started_background_thread_) {
     started_background_thread_ = true;
     std::thread background_thread(PosixEnv::BackgroundThreadEntryPoint, this);
-    fprintf(stderr,"start a Background thread!\n");
+    // fprintf(stderr,"start a Background thread!\n");
     background_thread.detach();
   }
 

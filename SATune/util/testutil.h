@@ -56,23 +56,23 @@ class ErrorEnv : public EnvWrapper {
   ~ErrorEnv() override { delete target(); }
 
   Status NewWritableFile(const std::string& fname,
-                         WritableFile** result) override {
+                         WritableFile** result, bool use_direct_io) override {
     if (writable_file_error_) {
       ++num_writable_file_errors_;
       *result = nullptr;
       return Status::IOError(fname, "fake error");
     }
-    return target()->NewWritableFile(fname, result);
+    return target()->NewWritableFile(fname, result, use_direct_io);
   }
 
   Status NewAppendableFile(const std::string& fname,
-                           WritableFile** result) override {
+                           WritableFile** result, bool use_direct_io) override {
     if (writable_file_error_) {
       ++num_writable_file_errors_;
       *result = nullptr;
       return Status::IOError(fname, "fake error");
     }
-    return target()->NewAppendableFile(fname, result);
+    return target()->NewAppendableFile(fname, result,use_direct_io);
   }
 };
 

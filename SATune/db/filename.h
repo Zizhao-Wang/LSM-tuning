@@ -13,6 +13,7 @@
 #include "leveldb/slice.h"
 #include "leveldb/status.h"
 #include "port/port.h"
+#include "leveldb/options.h"
 
 namespace leveldb {
 
@@ -64,8 +65,12 @@ std::string TempFileName(const std::string& dbname, uint64_t number);
 // Return the name of the info log file for "dbname".
 std::string InfoLogFileName(const std::string& dbname);
 
+std::string VersionDebugLogFileName(const std::string& dbname);
+
 // Return the name of the old info log file for "dbname".
 std::string OldInfoLogFileName(const std::string& dbname);
+
+std::string OldVersionDebugLogFileName(const std::string& dbname);
 
 // If filename is a leveldb file, store the type of the file in *type.
 // The number encoded in the filename is stored in *number.  If the
@@ -77,6 +82,9 @@ bool ParseFileName(const std::string& filename, uint64_t* number,
 // specified number.
 Status SetCurrentFile(Env* env, const std::string& dbname,
                       uint64_t descriptor_number);
+
+std::string TableFileName(const Options& options, const std::string& dbname,
+                          uint64_t number, int level);                      
 
 }  // namespace leveldb
 

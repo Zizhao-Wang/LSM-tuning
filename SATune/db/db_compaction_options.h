@@ -22,6 +22,11 @@ struct CompactionOptionsAtomic {
 
   std::atomic<size_t>  block_size;
 
+  std::atomic<int> level_for_multiplier_switch;
+
+  // 2. 切换后使用的新乘数
+  std::atomic<double> max_bytes_for_level_multiplier_after_switch;
+
   // 从非原子版初始化
   explicit CompactionOptionsAtomic(const CompactionOptions& o)
     : level0_compaction_trigger(o.level0_compaction_trigger),
@@ -30,7 +35,9 @@ struct CompactionOptionsAtomic {
     file_size_generated_in_compaction(o.file_size_generated_in_compaction),
     max_bytes_for_level1_base(o.max_bytes_for_level1_base),
     max_bytes_for_level1_multiplier(o.max_bytes_for_level1_multiplier),
-    block_size(o.block_size) {}
+    block_size(o.block_size),
+    level_for_multiplier_switch(o.level_for_multiplier_switch),
+    max_bytes_for_level_multiplier_after_switch(o.max_bytes_for_level_multiplier_after_switch) {}
 
   // --- New Function: Set L0 Triggers (Internal Logic) ---
   void SetL0Triggers_Internal(int new_C0) {

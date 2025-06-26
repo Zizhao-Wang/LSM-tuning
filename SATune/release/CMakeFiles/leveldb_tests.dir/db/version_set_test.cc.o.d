@@ -204,6 +204,7 @@ CMakeFiles/leveldb_tests.dir/db/version_set_test.cc.o: \
  /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
  /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
  /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/log_stats.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googletest/include/gtest/gtest.h \
  /usr/include/c++/11/ostream /usr/include/c++/11/ios \
  /usr/include/c++/11/bits/ios_base.h \

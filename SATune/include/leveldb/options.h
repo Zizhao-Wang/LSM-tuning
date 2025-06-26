@@ -9,6 +9,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
 
 #include "leveldb/export.h"
 #include "leveldb/compaction_options.h"
@@ -75,6 +76,24 @@ struct LEVELDB_EXPORT Options {
   // in the same directory as the DB contents if info_log is null.
   Logger* info_log = nullptr;
 
+  // ---- START: NEWLY ADDED ----
+  // A dedicated logger for verbose version debugging.
+  Logger* version_debug_log_ = nullptr;
+  // ---- END: NEWLY ADDED ----
+
+  
+  // The info log will be written to a file with this name.
+  // Default: empty (no info log is created).
+  Logger* level_compaction_log_ = nullptr;
+  // =================================================================
+  //                  在此处添加以下成员
+  // =================================================================
+  // If non-empty, a separate log file for compaction statistics will be
+  // created with this name. The file will be stored in the database directory.
+  // Default: empty (compaction stats are written to level_compaction_log_ if it exists).
+  std::string level_compaction_log_filename;
+  // =================================================================
+
   // -------------------
   // Parameters that affect performance
 
@@ -102,6 +121,8 @@ struct LEVELDB_EXPORT Options {
 
   std::vector<std::shared_ptr<Cache>> level_caches_;
 
+  std::map<int, std::string> level_paths;
+
   // Approximate size of user data packed per block.  Note that the
   // block size specified here corresponds to uncompressed data.  The
   // actual size of the unit read from disk may be smaller if
@@ -121,6 +142,29 @@ struct LEVELDB_EXPORT Options {
 
   size_t max_immutable_memtables = 1;
 
+  // If true, the database will use direct I/O for reading the log file
+  // during recovery. This can help avoid polluting the page cache with
+  // data that will only be read once.
+  // Default: false
+  bool use_direct_reads_for_recovery = false;  
+
+  // If true, random access files (e.g., SStable readers) will be opened
+  // with O_DIRECT. This can be beneficial for workloads that manage their
+  // own caching (e.g., using a large block cache) and want to avoid the
+  // overhead of the OS page cache.
+  // Default: false
+  bool use_direct_random_access = false;
+
+  // If true, files opened for appending writes (e.g., MANIFEST and WAL files)
+  // will use O_DIRECT. This requires writes to be aligned to the block size
+  // and can reduce OS cache overhead, but may impact latency if not handled
+  // carefully.
+  // Default: false
+  bool use_direct_writeappend_file = false;
+
+
+  bool merge_versions_on_flush = false;
+
   // Number of keys between restart points for delta encoding of keys.
   // This parameter can be changed dynamically.  Most clients should
   // leave this parameter alone.
@@ -134,7 +178,7 @@ struct LEVELDB_EXPORT Options {
   // compactions and hence longer latency/performance hiccups.
   // Another reason to increase this parameter might be when you are
   // initially populating a large database.
-  size_t max_file_size = 2 * 1024 * 1024;
+  size_t max_file_size = 64 * 1024 * 1024;
 
   // Compress blocks using the specified compression algorithm.  This
   // parameter can be changed dynamically.

@@ -156,7 +156,8 @@ class Repairer {
     // Open the log file
     std::string logname = LogFileName(dbname_, log);
     SequentialFile* lfile;
-    Status status = env_->NewSequentialFile(logname, &lfile);
+    bool user_open_read_log_file = options_.use_direct_reads_for_recovery;
+    Status status = env_->NewSequentialFile(logname, &lfile, user_open_read_log_file);
     if (!status.ok()) {
       return status;
     }
@@ -229,7 +230,7 @@ class Repairer {
     // on checksum verification.
     ReadOptions r;
     r.verify_checksums = options_.paranoid_checks;
-    return table_cache_->NewIterator(r, meta.number, meta.file_size);
+    return table_cache_->NewIterator(r, meta.number, meta.file_size, 0);
   }
 
   void ScanTable(uint64_t number) {

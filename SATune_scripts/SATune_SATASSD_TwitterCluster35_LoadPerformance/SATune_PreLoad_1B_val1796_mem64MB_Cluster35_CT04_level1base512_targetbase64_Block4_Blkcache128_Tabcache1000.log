@@ -1,0 +1,92 @@
+LevelDB:    version 1.23
+Date:       Sat Jun 14 19:18:57 2025
+CPU:        112 * Intel(R) Xeon(R) Gold 6348 CPU @ 2.60GHz
+CPUCache:   43008 KB
+open dbs:in fresh_db()
+open dbs:in Open()
+Macro USE_O_DIRECT is NOT defined.
+entering db_impl.cc:/mntdisk/SATune10B/PreLoad_Cluster35_1B_mem64MB_CT4_L1base512_targetbase64_Block4_Blkcache128_Tabcache1000
+num_: 1000000000 entries_per_batch_:1
+ The key size:19 value size:1796 
+The k_size:19 The v_size:1796 
+Scheduling a new flush thread because none was scheduled before.
+start a flush thread!
+[Flush Thread]: Entered FlushCall.
+[C0 Adapt] Conditions not met (U:0, T:0, T_def:0). Holding C0 at 4.
+
+
+[Flush Thread]: Scheduling a new PERMANENT compaction thread.
+
+---[ LevelDB Corruption Detected in TableCache::FindTable ]---
+    File Number: 4978
+    File Path:   /mntdisk/SATune10B/PreLoad_Cluster35_1B_mem64MB_CT4_L1base512_targetbase64_Block4_Blkcache128_Tabcache1000/004978.ldb
+    File Size:   67842473 bytes
+    Error:       NotFound: /mntdisk/SATune10B/PreLoad_Cluster35_1B_mem64MB_CT4_L1base512_targetbase64_Block4_Blkcache128_Tabcache1000/004978.ldb: No such file or directory
+-----------------------------------------------------------------
+
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==2863832==ERROR: AddressSanitizer: SEGV on unknown address 0x000000000000 (pc 0x654c76acb502 bp 0x776b387fe770 sp 0x776b387fe770 T3)
+==2863832==The signal is caused by a READ memory access.
+==2863832==Hint: address points to the zero page.
+    #0 0x654c76acb502 in leveldb::TableBuilder::FileSize() const /home/jeff-wang/LSM-tuning/SATune/table/table_builder.cc:279
+    #1 0x654c76a9cc8a in leveldb::DBImpl::DoCompactionWork(leveldb::DBImpl::CompactionState*) /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:1628
+    #2 0x654c76a9a909 in leveldb::DBImpl::BackgroundCompaction() /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:1119
+    #3 0x654c76a99ffa in leveldb::DBImpl::BackgroundCall() /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:1029
+    #4 0x654c76a99e47 in leveldb::DBImpl::BGWork(void*) /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:1000
+    #5 0x654c76adca5e in BackgroundThreadMain /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1497
+    #6 0x654c76adc51b in BackgroundThreadEntryPoint /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1360
+    #7 0x654c76ade803 in __invoke_impl<void, void (*)(leveldb::(anonymous namespace)::PosixEnv*), leveldb::(anonymous namespace)::PosixEnv*> /usr/include/c++/11/bits/invoke.h:61
+    #8 0x654c76ade786 in __invoke<void (*)(leveldb::(anonymous namespace)::PosixEnv*), leveldb::(anonymous namespace)::PosixEnv*> /usr/include/c++/11/bits/invoke.h:96
+    #9 0x654c76ade6f6 in _M_invoke<0, 1> /usr/include/c++/11/bits/std_thread.h:259
+    #10 0x654c76ade6af in operator() /usr/include/c++/11/bits/std_thread.h:266
+    #11 0x654c76ade693 in _M_run /usr/include/c++/11/bits/std_thread.h:211
+    #12 0x776b3f8dc252  (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc252)
+    #13 0x776b3f494ac2 in start_thread nptl/pthread_create.c:442
+    #14 0x776b3f52684f  (/lib/x86_64-linux-gnu/libc.so.6+0x12684f)
+
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV /home/jeff-wang/LSM-tuning/SATune/table/table_builder.cc:279 in leveldb::TableBuilder::FileSize() const
+Thread T3 created by T2 here:
+    #0 0x776b40058685 in __interceptor_pthread_create ../../../../src/libsanitizer/asan/asan_interceptors.cpp:216
+    #1 0x776b3f8dc328 in std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc328)
+    #2 0x654c76adc8ef in Schedule /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1468
+    #3 0x654c76a99e0e in leveldb::DBImpl::MaybeScheduleCompaction(bool) /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:994
+    #4 0x654c76a99bd9 in leveldb::DBImpl::FlushCall() /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:953
+    #5 0x654c76a99969 in leveldb::DBImpl::BGWork_Flush(void*) /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:911
+    #6 0x654c76adcb54 in FlushThreadMain /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1516
+    #7 0x654c76adc53a in FlushThreadEntryPoint /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1364
+    #8 0x654c76ade803 in __invoke_impl<void, void (*)(leveldb::(anonymous namespace)::PosixEnv*), leveldb::(anonymous namespace)::PosixEnv*> /usr/include/c++/11/bits/invoke.h:61
+    #9 0x654c76ade786 in __invoke<void (*)(leveldb::(anonymous namespace)::PosixEnv*), leveldb::(anonymous namespace)::PosixEnv*> /usr/include/c++/11/bits/invoke.h:96
+    #10 0x654c76ade6f6 in _M_invoke<0, 1> /usr/include/c++/11/bits/std_thread.h:259
+    #11 0x654c76ade6af in operator() /usr/include/c++/11/bits/std_thread.h:266
+    #12 0x654c76ade693 in _M_run /usr/include/c++/11/bits/std_thread.h:211
+    #13 0x776b3f8dc252  (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc252)
+
+Thread T2 created by T1 here:
+    #0 0x776b40058685 in __interceptor_pthread_create ../../../../src/libsanitizer/asan/asan_interceptors.cpp:216
+    #1 0x776b3f8dc328 in std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc328)
+    #2 0x654c76adc7cf in ScheduleFlush /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1445
+    #3 0x654c76a99930 in leveldb::DBImpl::MaybeScheduleFlush() /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:906
+    #4 0x654c76a9f2e0 in leveldb::DBImpl::MakeRoomForWrite(bool) /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:2136
+    #5 0x654c76a9e036 in leveldb::DBImpl::Write(leveldb::WriteOptions const&, leveldb::WriteBatch*) /home/jeff-wang/LSM-tuning/SATune/db/db_impl.cc:1863
+    #6 0x654c76a7de84 in leveldb::Benchmark::DoWrite_cluster(leveldb::(anonymous namespace)::ThreadState*) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x2ee84)
+    #7 0x654c76a7ad90 in leveldb::Benchmark::WriteCluster(leveldb::(anonymous namespace)::ThreadState*) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x2bd90)
+    #8 0x654c76a78832 in leveldb::Benchmark::ThreadBody(void*) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x29832)
+    #9 0x654c76ae18d3 in void std::__invoke_impl<void, void (*)(void*), void*>(std::__invoke_other, void (*&&)(void*), void*&&) /usr/include/c++/11/bits/invoke.h:61
+    #10 0x654c76ae1846 in std::__invoke_result<void (*)(void*), void*>::type std::__invoke<void (*)(void*), void*>(void (*&&)(void*), void*&&) /usr/include/c++/11/bits/invoke.h:96
+    #11 0x654c76ae17a6 in void std::thread::_Invoker<std::tuple<void (*)(void*), void*> >::_M_invoke<0ul, 1ul>(std::_Index_tuple<0ul, 1ul>) /usr/include/c++/11/bits/std_thread.h:259
+    #12 0x654c76ae175b in std::thread::_Invoker<std::tuple<void (*)(void*), void*> >::operator()() /usr/include/c++/11/bits/std_thread.h:266
+    #13 0x654c76ae173b in std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)(void*), void*> > >::_M_run() /usr/include/c++/11/bits/std_thread.h:211
+    #14 0x776b3f8dc252  (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc252)
+
+Thread T1 created by T0 here:
+    #0 0x776b40058685 in __interceptor_pthread_create ../../../../src/libsanitizer/asan/asan_interceptors.cpp:216
+    #1 0x776b3f8dc328 in std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc328)
+    #2 0x654c76adc1f5 in StartThread /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1303
+    #3 0x654c76a78dce in leveldb::Benchmark::RunBenchmark(int, leveldb::Slice, void (leveldb::Benchmark::*)(leveldb::(anonymous namespace)::ThreadState*)) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x29dce)
+    #4 0x654c76a7839c in leveldb::Benchmark::Run() (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x2939c)
+    #5 0x654c76a6da67 in main /home/jeff-wang/LSM-tuning/SATune/benchmarks/db_bench.cc:2728
+    #6 0x776b3f429d8f in __libc_start_call_main ../sysdeps/nptl/libc_start_call_main.h:58
+
+==2863832==ABORTING

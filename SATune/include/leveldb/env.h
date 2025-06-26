@@ -72,7 +72,7 @@ class LEVELDB_EXPORT Env {
   //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewSequentialFile(const std::string& fname,
-                                   SequentialFile** result) = 0;
+      SequentialFile** result, bool user_direct_io=false) = 0;
 
   // Create an object supporting random-access reads from the file with the
   // specified name.  On success, stores a pointer to the new file in
@@ -83,7 +83,7 @@ class LEVELDB_EXPORT Env {
   //
   // The returned file may be concurrently accessed by multiple threads.
   virtual Status NewRandomAccessFile(const std::string& fname,
-                                     RandomAccessFile** result) = 0;
+                                     RandomAccessFile** result, bool use_direct_io=false) = 0;
 
   // Create an object that writes to a new file with the specified
   // name.  Deletes any existing file with the same name and creates a
@@ -93,7 +93,7 @@ class LEVELDB_EXPORT Env {
   //
   // The returned file will only be accessed by one thread at a time.
   virtual Status NewWritableFile(const std::string& fname,
-                                 WritableFile** result) = 0;
+                                 WritableFile** result, bool use_direct_io=false) = 0;
 
   // Create an object that either appends to an existing file, or
   // writes to a new file (if the file does not exist to begin with).
@@ -108,7 +108,7 @@ class LEVELDB_EXPORT Env {
   // the leveldb implementation) must be prepared to deal with
   // an Env that does not support appending.
   virtual Status NewAppendableFile(const std::string& fname,
-                                   WritableFile** result);
+                                   WritableFile** result, bool use_direct_io=false);
 
   // Returns true iff the named file exists.
   virtual bool FileExists(const std::string& fname) = 0;
@@ -289,6 +289,8 @@ class LEVELDB_EXPORT WritableFile {
   virtual Status Close() = 0;
   virtual Status Flush() = 0;
   virtual Status Sync() = 0;
+
+  virtual uint64_t GetFileSize() const  = 0;
 };
 
 // An interface for writing log messages.
@@ -344,18 +346,18 @@ class LEVELDB_EXPORT EnvWrapper : public Env {
   Env* target() const { return target_; }
 
   // The following text is boilerplate that forwards all methods to target().
-  Status NewSequentialFile(const std::string& f, SequentialFile** r) override {
-    return target_->NewSequentialFile(f, r);
+  Status NewSequentialFile(const std::string& f, SequentialFile** r, bool user_direct_io=false) override {
+    return target_->NewSequentialFile(f, r, user_direct_io);
   }
   Status NewRandomAccessFile(const std::string& f,
-                             RandomAccessFile** r) override {
-    return target_->NewRandomAccessFile(f, r);
+                             RandomAccessFile** r, bool use_direct_io=false) override {
+    return target_->NewRandomAccessFile(f, r,use_direct_io);
   }
-  Status NewWritableFile(const std::string& f, WritableFile** r) override {
-    return target_->NewWritableFile(f, r);
+  Status NewWritableFile(const std::string& f, WritableFile** r, bool use_direct_io=false) override {
+    return target_->NewWritableFile(f, r, use_direct_io);
   }
-  Status NewAppendableFile(const std::string& f, WritableFile** r) override {
-    return target_->NewAppendableFile(f, r);
+  Status NewAppendableFile(const std::string& f, WritableFile** r, bool use_direct_io=false) override {
+    return target_->NewAppendableFile(f, r, use_direct_io);
   }
   bool FileExists(const std::string& f) override {
     return target_->FileExists(f);

@@ -217,6 +217,7 @@ CMakeFiles/leveldb.dir/db/repair.cc.o: \
  /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
  /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/l0_tuning.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/log_stats.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/filename.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_reader.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/memtable.h \

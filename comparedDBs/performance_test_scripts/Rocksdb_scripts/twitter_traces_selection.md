@@ -8,4 +8,6 @@ cluster18   2.0994  75G get:0.96 add:0.01 gets:0.01 cas:0.01
 cluster17   2.1106  52G	 
 cluster47   2.0637  58G
 
+cluster40   0.8551
+
 cluster1    2.6774  get:0.99 ✅

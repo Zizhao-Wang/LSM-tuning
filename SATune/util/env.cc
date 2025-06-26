@@ -18,7 +18,7 @@ Env::Env() = default;
 
 Env::~Env() = default;
 
-Status Env::NewAppendableFile(const std::string& fname, WritableFile** result) {
+Status Env::NewAppendableFile(const std::string& fname, WritableFile** result, bool use_direct_io) {
   return Status::NotSupported("NewAppendableFile", fname);
 }
 

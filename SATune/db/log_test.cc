@@ -168,7 +168,7 @@ class LogTest : public testing::Test {
       contents_.append(slice.data(), slice.size());
       return Status::OK();
     }
-
+    uint64_t GetFileSize() const override {return 0;}
     std::string contents_;
   };
 

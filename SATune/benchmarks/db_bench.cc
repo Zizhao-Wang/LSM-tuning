@@ -11,6 +11,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <chrono>
 #include <vector>
 
 #include "leveldb/cache.h"
@@ -214,6 +215,8 @@ DEFINE_int32(seek_nexts, 50,
 // static const char* FLAGS_db = nullptr;
 DEFINE_string(db, "", "Use the db with the following name.");
 
+DEFINE_string(level_compaction_log, "", "Use the db with the following name.");
+
 DEFINE_string(hot_file, "", "file for storing hot keys.");
 
 DEFINE_string(compactiontriggered_file, "", "file for storing hot keys.");
@@ -251,6 +254,27 @@ DEFINE_int32(rwdelay, 10, "delay in us");
 DEFINE_int32(sleep, 100, "sleep for write in readwhilewriting2");
 DEFINE_int64(report_interval, 20, "report time interval");
 
+
+// ----------------------------------------------------------------
+// The following FLAGS are dedicated to tuning Direct I/O behavior:
+//  use_direct_reads_for_recovery - Use O_DIRECT for WAL reads during recovery
+//  use_direct_random_access      - Use O_DIRECT for random reads (SSTable access)
+//  use_direct_writeappend_file   - Use O_DIRECT for appending writes (WAL/MANIFEST)
+// ----------------------------------------------------------------
+// Define the boolean flag for using Direct I/O during WAL recovery.
+DEFINE_bool(use_direct_reads_for_recovery, false,
+            "If true, use O_DIRECT for reading log files during recovery. ");
+// Define the boolean flag for using Direct I/O for random access files (SSTables).
+DEFINE_bool(use_direct_random_access, false,
+            "If true, use O_DIRECT for random reads (e.g., SSTable access). ");
+// Define the boolean flag for using Direct I/O for append-only writes (WAL, MANIFEST).
+DEFINE_bool(use_direct_writeappend_file, false,
+            "If true, use O_DIRECT for appending writes (e.g., WAL, MANIFEST). ");
+// ================================================================
+// The above FLAGS are specific to the I/O module.
+// ================================================================
+
+
 // ----------------------------------------------------------------
 // The following FLAGS are dedicated to tuning Compaction behavior:
 //   compaction_trigger                - L0 file count threshold to trigger L0→L1 compaction
@@ -258,7 +282,6 @@ DEFINE_int64(report_interval, 20, "report time interval");
 //   stop_writes_trigger               - L0 file count threshold to refuse new writes
 //   file_size_generated_in_compaction - Target file size (in bytes) produced per compaction
 // ----------------------------------------------------------------
-// 为 CompactionOptions 中的各项定义命令行 flag
 DEFINE_int32(level0_compaction_trigger, 4,
              "When number of L0 files > this, trigger L0->L1 compaction");
 DEFINE_int32(level0_slowdown_writes_trigger, 12,
@@ -267,10 +290,19 @@ DEFINE_int32(level0_stop_writes_trigger, 20,
              "When number of L0 files >= this, stop writes");
 DEFINE_int64(file_size_generated_in_compaction, 64LL * 1024 * 1024,
              "Bytes generated per compaction output file");
-DEFINE_int64(max_bytes_for_level1_base, 64LL * 1024 * 1024,
+DEFINE_int64(max_bytes_for_level1_base, 512LL * 1024 * 1024,
              "Total data size allowed in L1 before compaction, base value");
 DEFINE_double(max_bytes_for_level1_multiplier, 10.0,
               "Multiplier for max_bytes_for_levelN = base * multiplier^(N-1)");
+
+DEFINE_int32(multiplier_switch_level, 3,
+             "The first level (>= 2) at which the new 'after_switch' "
+             "multiplier is used. E.g., if set to 3, L3's size will be "
+             "calculated as L2's size * after_switch_multiplier.");
+
+DEFINE_double(max_bytes_for_level_multiplier_after_switch, 10.0,
+              "The multiplier used for level size calculation for all levels "
+              "at or after 'multiplier_switch_level'.");
 
 // Approximate size of user data packed per block (before compression.
 // (initialized to default value by "main")
@@ -279,6 +311,67 @@ DEFINE_int64(block_size, 4LL * 1024,
 // ================================================================
 // The above FLAGS are specific to the Compaction module and should not be modified or reused for other logic.
 // ================================================================
+
+DEFINE_string(level_paths, "",
+              "Specify paths for different levels in the format: "
+              "\"level1:/path1,level2:/path2,...\". "
+              "If a level is not specified, the main db path is used.");
+
+
+static void ParseLevelPaths(const std::string& paths_str,
+                            std::map<int, std::string>* level_paths) {
+  if (paths_str.empty()) {
+    return;
+  }
+
+  std::string remaining_str = paths_str;
+  while (!remaining_str.empty()) {
+    // 找到下一个逗号，或者处理到字符串末尾
+    size_t comma_pos = remaining_str.find(',');
+    std::string current_pair = remaining_str.substr(0, comma_pos);
+
+    // 更新剩余字符串，准备下一次循环
+    if (comma_pos == std::string::npos) {
+      remaining_str.clear();
+    } else {
+      remaining_str = remaining_str.substr(comma_pos + 1);
+    }
+
+    if (current_pair.empty()) {
+      continue;
+    }
+
+    // 分离 "level_spec:path" 对
+    size_t colon_pos = current_pair.find(':');
+    if (colon_pos == std::string::npos || colon_pos == 0) {
+      // **修改点**: 使用 fprintf 输出到 stderr
+      fprintf(stderr, "警告: 格式错误，已跳过: %s\n", current_pair.c_str());
+      continue;
+    }
+    std::string level_spec = current_pair.substr(0, colon_pos);
+    std::string path = current_pair.substr(colon_pos + 1);
+
+    // 解析 level_spec，它可能是单个数字或 "start-end" 范围
+    size_t dash_pos = level_spec.find('-');
+    if (dash_pos != std::string::npos) {
+      // 范围格式: "start-end"
+      int start_level = atoi(level_spec.substr(0, dash_pos).c_str());
+      int end_level = atoi(level_spec.substr(dash_pos + 1).c_str());
+      if (start_level > end_level) {
+          // **修改点**: 使用 fprintf 输出到 stderr
+          fprintf(stderr, "警告: 范围格式错误,起始level大于结束level,已跳过: %s\n", level_spec.c_str());
+          continue;
+      }
+      for (int i = start_level; i <= end_level; ++i) {
+        (*level_paths)[i] = path;
+      }
+    } else {
+      // 单个 level 格式
+      int level = atoi(level_spec.c_str());
+      (*level_paths)[level] = path;
+    }
+  }
+}
 
 
 namespace leveldb {
@@ -464,6 +557,9 @@ class Stats {
   uint64_t done_;
   double last_op_finish_;
 
+  double accurate_micros_;                 
+  double accurate_micros_since_last_report_;
+
   // 为每种类型（包括总和）维护一个 histogram
   std::array<Histogram, kNumOperationTypes> hist_;
   std::array<uint64_t, kNumOperationTypes> op_done_;
@@ -496,6 +592,9 @@ class Stats {
       hist_[i].Clear();
       op_done_[i]       = 0;
     }
+
+    accurate_micros_ = 0;
+    accurate_micros_since_last_report_ = 0;
   }
 
   void Merge(const Stats& other) {
@@ -531,22 +630,23 @@ class Stats {
 
   void PrintSpeed() {
 
-    uint64_t now = Env::Default()->NowMicros();
-    int64_t usecs_since_last = now - last_report_finish_;
+    // uint64_t now = Env::Default()->NowMicros();
+    // int64_t usecs_since_last = now - last_report_finish_;
 
     // std::string cur_time = Env::Default()->TimeToString(now/1000000);
     fprintf(stdout,
             "%s ... thread %d: (%lu,%lu) ops and "
             "(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
             getCurrentTime().c_str(), 
-            id_,
-            done_ - last_report_done_, done_,
-            (done_ - last_report_done_) /
-            (usecs_since_last / 1000000.0),
-            done_ / ((now - start_) / 1000000.0),
-            (now - last_report_finish_) / 1000000.0,
-            (now - start_) / 1000000.0);
-    last_report_finish_ = now;
+            id_, done_ - last_report_done_, done_,
+            (done_ - last_report_done_) /(accurate_micros_since_last_report_ / 1000000.0),
+            done_ / (accurate_micros_ / 1000000.0),
+            accurate_micros_since_last_report_ / 1000000.0,
+            accurate_micros_ / 1000000.0);
+    
+    accurate_micros_since_last_report_ = 0;
+
+    // last_report_finish_ = now;
     last_report_done_ = done_;
 
     // std::string io_res = GetStdoutFromCommand("echo q| htop -u hanson | aha --line-fix | html2text -width 999 | grep -v 'F1Help' | grep -v 'xml version=' | grep kv_bench ");
@@ -605,6 +705,10 @@ class Stats {
     call_ref++;
   }
 
+  void resetlastop(){
+    last_op_finish_ = g_env->NowMicros();
+  }
+
   void FinishedSingleOp2(DB* db = nullptr, OperationType op= kWrite) {
     if (FLAGS_histogram) {
       double now = g_env->NowMicros();
@@ -645,15 +749,13 @@ class Stats {
     }
   }
 
-  void FinishedSingleOp(DB* db = nullptr, OperationType op= kWrite) {
+  void FinishedSingleOp(DB* db = nullptr, OperationType op= kWrite, double micros_per_op = -1.0) {
     if (FLAGS_histogram) {
-      double now = g_env->NowMicros();
-      double micros = now - last_op_finish_;
-      
+      double micros = micros_per_op;
       hist_[op].Add(micros);
       hist_[kAllOps].Add(micros);
-
-      last_op_finish_ = now;
+      accurate_micros_ += micros_per_op;
+      accurate_micros_since_last_report_ += micros_per_op;
     }
 
     done_++;
@@ -668,7 +770,7 @@ class Stats {
           stats = "(failed)";
         }
         fprintf(stdout, "%s\n", stats.c_str());
-        fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
+        fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n", done_, real_ops, bytes_/1048576.0);
         fflush(stdout);
       }
     }
@@ -701,7 +803,9 @@ class Stats {
     if (done_ < 1) done_ = 1;
 
     std::string extra;
-    double elapsed = (finish_ - start_) * 1e-6;
+    // double elapsed = (finish_ - start_) * 1e-6;
+    double elapsed = accurate_micros_ * 1e-6;
+
     if (bytes_ > 0) {
       // Rate is computed on actual elapsed time, not the sum of per-thread
       // elapsed times.
@@ -716,11 +820,8 @@ class Stats {
     double throughput = (double)done_/elapsed;
     std::fprintf(stdout, "%lu operations have been finished (%.3f MB data have been written into db)\n", done_, bytes_/1048576.0);
     fprintf(stdout, "%-12s : %11.3f micros/op %ld ops/sec;%s%s\n",
-            name.ToString().c_str(),
-            elapsed * 1e6 / done_,
-            (long)throughput,
-            (extra.empty() ? "" : " "),
-            extra.c_str());
+      name.ToString().c_str(), elapsed * 1e6 / done_,(long)throughput,
+      (extra.empty() ? "" : " "),extra.c_str());
 
     if (FLAGS_histogram) {
       for (int i = 0; i < kNumOperationTypes; ++i) {
@@ -1271,6 +1372,12 @@ class Benchmark {
     options.max_file_size = FLAGS_max_file_size;
 
     options.id_type = (FLAGS_cache_id_type == 0) ? Options::kNeWID : Options::kFileNumber;
+    options.use_direct_reads_for_recovery = FLAGS_use_direct_reads_for_recovery;
+    options.use_direct_random_access = FLAGS_use_direct_random_access;
+    options.use_direct_writeappend_file = FLAGS_use_direct_writeappend_file;
+
+    options.level_compaction_log_filename = FLAGS_level_compaction_log;
+
 
     options.block_size = FLAGS_block_size;
     if (FLAGS_comparisons) {
@@ -1295,6 +1402,24 @@ class Benchmark {
     options.compaction_opts.level0_stop_writes_trigger = FLAGS_level0_stop_writes_trigger;
     options.compaction_opts.max_bytes_for_level1_base = FLAGS_max_bytes_for_level1_base;
     options.compaction_opts.max_bytes_for_level1_multiplier = FLAGS_max_bytes_for_level1_multiplier;
+    options.compaction_opts.level_for_multiplier_switch = FLAGS_multiplier_switch_level;
+    options.compaction_opts.max_bytes_for_level_multiplier_after_switch = FLAGS_max_bytes_for_level_multiplier_after_switch;
+
+  if (!FLAGS_level_paths.empty()) {
+    ParseLevelPaths(FLAGS_level_paths, &options.level_paths);
+
+    fprintf(stderr, "--- Parsed Level Paths ---\n");
+    if (options.level_paths.empty()) {
+      fprintf(stderr, "No specific level paths were parsed.\n");
+    } else {
+      for (std::map<int, std::string>::const_iterator it = options.level_paths.begin();
+          it != options.level_paths.end(); ++it) {
+        fprintf(stderr, "  Level %d -> \"%s\"\n", it->first, it->second.c_str());
+      }
+    }
+    fprintf(stderr, "--------------------------\n");
+  }
+
 
     std::fprintf(stderr, "open dbs:in Open()\n");
     fflush(stderr);
@@ -1505,7 +1630,7 @@ class Benchmark {
   void DoWrite_cluster(ThreadState* thread) {
     uint64_t num_written = 0;
     std::string get_value;
-
+    
     if (num_ != FLAGS_num) {
       char msg[100];
       std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
@@ -1517,6 +1642,9 @@ class Benchmark {
     Status s;
     int64_t bytes = 0;
     int id = 0;
+
+    uint64_t total_client_prep_micros = 0;
+    uint64_t total_db_write_micros = 0;
 
     // 打开 CSV 文件
     std::ifstream csv_file(FLAGS_data_file);
@@ -1537,10 +1665,11 @@ class Benchmark {
     const int32_t v_size=FLAGS_value_size;
     fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
 
+    thread->stats.resetlastop();
+    
     for (int64_t i = 0; i < num_; i += entries_per_batch_) {
       batch.Clear();
-      int64_t batch_bytes = 0;
-
+      auto client_prep_start = std::chrono::high_resolution_clock::now();
       for (int64_t j = 0; j < entries_per_batch_; j++) {
         int64_t rand_num = 0;
         line_stream.clear();
@@ -1575,13 +1704,20 @@ class Benchmark {
 
         // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
         batch.Put(key, val);
-          
-        batch_bytes += val.size() + k_size ;
         bytes += val.size() + k_size ;
-        ++num_written;
-        thread->stats.FinishedSingleOp(db_, kWrite);
+        // thread->stats.FinishedSingleOp(db_, kWrite);
+        thread->stats.AddBytes(bytes);
+        bytes=0;
       }
+      auto client_prep_end = std::chrono::high_resolution_clock::now();
+      total_client_prep_micros += std::chrono::duration_cast<std::chrono::microseconds>(client_prep_end - client_prep_start).count();
+
+      auto db_write_start = std::chrono::high_resolution_clock::now();
       s = db_->Write(write_options_, &batch);
+      auto db_write_end = std::chrono::high_resolution_clock::now();
+      auto batch_duration_micros = std::chrono::duration_cast<std::chrono::microseconds>(db_write_end - db_write_start).count();
+      total_db_write_micros += batch_duration_micros;
+      thread->stats.FinishedSingleOp(db_, kWrite, batch_duration_micros);
 
       if (!s.ok()) {
         fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
@@ -1590,7 +1726,10 @@ class Benchmark {
     }
 
     fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
-    thread->stats.AddBytes(bytes);
+    fprintf(stderr, "\n=============== FINAL TIME BREAKDOWN ===============\n");
+    fprintf(stderr, "Client-Side Data Prep Time: %.2f seconds\n", total_client_prep_micros / 1000000.0);
+    fprintf(stderr, "Database Write Call Time:   %.2f seconds\n", total_db_write_micros / 1000000.0);
+    fprintf(stderr, "====================================================\n");
   }
 
   void Do_cluster_benchmarking(ThreadState* thread) {

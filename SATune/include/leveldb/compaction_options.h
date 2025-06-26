@@ -24,13 +24,21 @@ struct LEVELDB_EXPORT CompactionOptions {
   int64_t file_size_generated_in_compaction = 64LL * 1024 * 1024;
 
     // 每个 level 的总数据量基数（L1 的最大总数据量），默认为 64MiB
-  int64_t max_bytes_for_level1_base         = 64LL * 1024 * 1024;
+  int64_t max_bytes_for_level1_base  = 512LL * 1024 * 1024;
 
   // 每上升一级，max_bytes_for_level_base 乘以此值，默认为 10
   double max_bytes_for_level1_multiplier    = 10.0;
 
   // the default size of block is 4KiB
   size_t block_size=4*1024;
+
+  // 1. 乘数切换的层级
+  //    例如，如果设置为3，则L4的大小将由L3的大小乘以新的乘数决定。
+  //    L2->L3 仍然使用旧的乘数。
+  int level_for_multiplier_switch;
+
+  // 2. 切换后使用的新乘数
+  double max_bytes_for_level_multiplier_after_switch;
 
 };
 

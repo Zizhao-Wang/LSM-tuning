@@ -46,14 +46,33 @@ static double MaxBytesForLevel(const CompactionOptionsAtomic* options, int level
   // Result for both level-0 and level-1
   double result = options->max_bytes_for_level1_base.load();
 
-  // if(level >= 1){
-  //   // Define the size for level 1
-  //   result = 2000. * 1048576.0;  
-  // }
-  double multiplier=options->max_bytes_for_level1_multiplier.load();
-  while (level > 1) {
-    result *= multiplier;
-    level--;
+  if (level <= 1) {
+    return result;
+  }
+
+  // 加载在“切换层级”之前使用的“默认”或“基础”乘数。
+  const double old_multiplier  = options->max_bytes_for_level1_multiplier.load();
+
+  // 加载在“切换层级”之后使用的新乘数。
+  const double new_multiplier  = options->max_bytes_for_level_multiplier_after_switch.load();
+
+  //比如，若值为3，则计算L4大小时（即从L3到L4的增长）会开始使用新的乘数。
+  const int switch_level = options->level_for_multiplier_switch.load();
+
+  // 从L2开始，逐层计算大小
+  int current_level = 2;
+  while (current_level <= level) {
+    
+    // 决定计算当前层级(current_level)大小时，应该用哪个乘数
+    if (current_level >= switch_level) {
+      // 如果当前计算的层级号 大于或等于 切换层级，就使用新乘数
+      result *= new_multiplier;
+    } else {
+      // 否则，使用旧乘数
+      result *= old_multiplier;
+    }
+    
+    current_level++;
   }
   return result;
 }
@@ -215,14 +234,13 @@ class Version::LevelFileNumIterator : public Iterator {
 };
 
 static Iterator* GetFileIterator(void* arg, const ReadOptions& options,
-                                 const Slice& file_value) {
+                                 const Slice& file_value, int level) {
   TableCache* cache = reinterpret_cast<TableCache*>(arg);
   if (file_value.size() != 16) {
     return NewErrorIterator(
         Status::Corruption("FileReader invoked with unexpected value"));
   } else {
-    return cache->NewIterator(options, DecodeFixed64(file_value.data()),
-                              DecodeFixed64(file_value.data() + 8));
+    return cache->NewIterator(options, DecodeFixed64(file_value.data()),DecodeFixed64(file_value.data() + 8), level);
   }
 }
 
@@ -230,7 +248,7 @@ Iterator* Version::NewConcatenatingIterator(const ReadOptions& options,
                                             int level) const {
   return NewTwoLevelIterator(
       new LevelFileNumIterator(vset_->icmp_, &files_[level]), &GetFileIterator,
-      vset_->table_cache_, options);
+      vset_->table_cache_, options, level);
 }
 
 void Version::AddIterators(const ReadOptions& options,
@@ -238,7 +256,7 @@ void Version::AddIterators(const ReadOptions& options,
   // Merge all level zero files together since they may overlap
   for (size_t i = 0; i < files_[0].size(); i++) {
     iters->push_back(vset_->table_cache_->NewIterator(
-        options, files_[0][i]->number, files_[0][i]->file_size));
+        options, files_[0][i]->number, files_[0][i]->file_size, 0));
   }
 
   // For levels > 0, we can use a concatenating iterator that sequentially
@@ -398,7 +416,7 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
       state->last_file_read_level = level;
 
       state->s = state->vset->table_cache_->Get(*state->options, f->number,
-                                                f->file_size, state->ikey,
+                                                f->file_size, level, state->ikey,
                                                 &state->saver, SaveValue);
       if (!state->s.ok()) {
         state->found = true;
@@ -796,8 +814,8 @@ class VersionSet::Builder {
   void MaybeAddFile(Version* v, int level, FileMetaData* f) {
     if (levels_[level].deleted_files.count(f->number) > 0) {
       // File is deleted: do nothing
-      // fprintf(stderr, "File %llu at level %d is deleted; skipping addition.\n",
-      //   static_cast<unsigned long long>(f->number), level);
+      Log(vset_->options_->version_debug_log_,"[Version DEBUG] Building Version ID %llu: SKIPPING file #%llu (level %d) because it is marked for deletion in this edit.\n",
+        static_cast<unsigned long long>(v->GetVersionId()), static_cast<unsigned long long>(f->number), level);
     } else {
       std::vector<FileMetaData*>* files = &v->files_[level];
       if (level > 0 && !files->empty()) {
@@ -807,15 +825,15 @@ class VersionSet::Builder {
       }
       f->refs++;
       files->push_back(f);
-      // fprintf(stderr, "File %llu added at level %d; refs: %d.\n",
-      //       static_cast<unsigned long long>(f->number), level, f->refs);
+      Log(vset_->options_->version_debug_log_,"[Version DEBUG] Building Version ID %llu: ADDING file #%llu (level %d), new refs: %d.",
+        static_cast<unsigned long long>(v->GetVersionId()), static_cast<unsigned long long>(f->number), level, f->refs);
     }
   }
 };
 
 VersionSet::VersionSet(const std::string& dbname, const Options* options,
                        TableCache* table_cache,
-                       const InternalKeyComparator* cmp, const CompactionOptionsAtomic* compaction_opts_atomic_)
+                       const InternalKeyComparator* cmp, const CompactionOptionsAtomic* compaction_opts_atomic_, LogAndApplyStats* stats)
     : env_(options->env),
       dbname_(dbname),
       options_(options),
@@ -829,9 +847,11 @@ VersionSet::VersionSet(const std::string& dbname, const Options* options,
       comp_opts_atomic_(compaction_opts_atomic_),
       descriptor_file_(nullptr),
       descriptor_log_(nullptr),
-      dummy_versions_(this),
-      current_(nullptr) {
-  AppendVersion(new Version(this));
+      dummy_versions_(this,0),
+      current_(nullptr),
+      next_version_id_(1),
+      stats_(stats) {
+  AppendVersion(new Version(this, next_version_id_.fetch_add(1, std::memory_order_relaxed)));
 }
 
 VersionSet::~VersionSet() {
@@ -858,7 +878,48 @@ void VersionSet::AppendVersion(Version* v) {
   v->next_->prev_ = v;
 }
 
-Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
+Status  VersionSet::BuildAndInstallVersion(VersionEdit* edit, Version** v_out) {
+  // This helper function encapsulates the logic for creating a new version,
+  // applying an edit, and finalizing it.
+  
+  uint64_t new_id = next_version_id_.fetch_add(1, std::memory_order_relaxed);
+  Version* v = new Version(this, new_id);
+  Log(options_->version_debug_log_,"[Builder Pessimistic] Generated new Version with ID: %llu",
+    static_cast<unsigned long long>(new_id));
+  
+  Builder builder(this, current_);
+  builder.Apply(edit);
+  builder.SaveTo(v);
+  Finalize(v);
+  *v_out = v; // Return the newly created version via output parameter
+
+  // 2. Write the MANIFEST record while holding the lock
+  std::string record;
+  edit->EncodeTo(&record);
+  Status s = descriptor_log_->AddRecord(record);
+  if (s.ok()) {
+    s = descriptor_file_->Sync();
+  }
+  if (!s.ok()) {
+    Log(options_->info_log, "MANIFEST write (Pessimistic Retry): %s\n", s.ToString().c_str());
+  }
+
+  return s;
+}
+
+Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu, CallerView caller) {
+
+  const char* caller_str;
+  switch (caller) {
+    case CallerView::kFlush:      caller_str = "Flush";      break;
+    case CallerView::kCompaction: caller_str = "Compaction"; break;
+    case CallerView::kUnknown:    default: caller_str = "Unknown";    break;
+  }
+
+  const uint64_t base_version_id = current_->GetVersionId();
+  Log(options_->version_debug_log_, "[%s Thread] LogAndApply START. Applying edit on top of base Version ID: %llu",
+    caller_str, static_cast<unsigned long long>(current_->GetVersionId()));
+
   if (edit->has_log_number_) {
     assert(edit->log_number_ >= log_number_);
     assert(edit->log_number_ < next_file_number_);
@@ -873,7 +934,8 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
   edit->SetNextFile(next_file_number_);
   edit->SetLastSequence(last_sequence_);
 
-  Version* v = new Version(this);
+  uint64_t new_id = next_version_id_.fetch_add(1, std::memory_order_relaxed);
+  Version* v = new Version(this, new_id);
   {
     Builder builder(this, current_);
     builder.Apply(edit);
@@ -923,6 +985,23 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     mu->Lock();
   }
 
+  if (s.ok() && current_->GetVersionId() != base_version_id) {
+    if (stats_ != nullptr) {
+      if (caller == CallerView::kFlush) {
+        stats_->flush_conflicts.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        stats_->compaction_conflicts.fetch_add(1, std::memory_order_relaxed);
+      }
+      if (stats_->recent_conflicts.size() < 20) { // Limit log size
+        stats_->recent_conflicts.push_back({caller, base_version_id, current_->GetVersionId()});
+      }
+    }
+    Log(options_->version_debug_log_,"[%s Thread] CONFLICT. Base changed from %lu to %lu. Re-building version while holding lock.",
+      caller_str, base_version_id, current_->GetVersionId());
+    delete v;
+    s = BuildAndInstallVersion(edit, &v); 
+  }
+
   // Install the new version
   if (s.ok()) {
     AppendVersion(v);
@@ -939,6 +1018,8 @@ Status VersionSet::LogAndApply(VersionEdit* edit, port::Mutex* mu) {
     }
   }
 
+  Log(options_->version_debug_log_, "[%s Thread] LogAndApply END. Successfully installed new Version with ID: %llu \n\n",
+    caller_str, static_cast<unsigned long long>(v->GetVersionId()));
   return s;
 }
 
@@ -963,7 +1044,8 @@ Status VersionSet::Recover(bool* save_manifest) {
 
   std::string dscname = dbname_ + "/" + current;
   SequentialFile* file;
-  s = env_->NewSequentialFile(dscname, &file);
+  bool user_open_read_log_file = options_->use_direct_reads_for_recovery;
+  s = env_->NewSequentialFile(dscname, &file,user_open_read_log_file);
   if (!s.ok()) {
     if (s.IsNotFound()) {
       return Status::Corruption("CURRENT points to a non-existent file",
@@ -1049,7 +1131,7 @@ Status VersionSet::Recover(bool* save_manifest) {
   }
 
   if (s.ok()) {
-    Version* v = new Version(this);
+    Version* v = new Version(this, next_version_id_.fetch_add(1, std::memory_order_relaxed));
     builder.SaveTo(v);
     // Install recovered version
     Finalize(v);
@@ -1289,7 +1371,7 @@ uint64_t VersionSet::ApproximateOffsetOf(Version* v, const InternalKey& ikey) {
         // approximate offset of "ikey" within the table.
         Table* tableptr;
         Iterator* iter = table_cache_->NewIterator(
-            ReadOptions(), files[i]->number, files[i]->file_size, &tableptr);
+            ReadOptions(), files[i]->number, files[i]->file_size,level, &tableptr);
         if (tableptr != nullptr) {
           result += tableptr->ApproximateOffsetOf(ikey.Encode());
         }
@@ -1379,6 +1461,9 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
   // we will make a concatenating iterator per level.
   // TODO(opt): use concatenating iterator for level-0 if there is no overlap
   const int space = (c->level() == 0 ? c->inputs_[0].size() + 1 : 2);
+  const int input_level1 = c->level();
+  const int input_level2 = c->level()+1;
+
   Iterator** list = new Iterator*[space];
   int num = 0;
   for (int which = 0; which < 2; which++) {
@@ -1387,13 +1472,13 @@ Iterator* VersionSet::MakeInputIterator(Compaction* c) {
         const std::vector<FileMetaData*>& files = c->inputs_[which];
         for (size_t i = 0; i < files.size(); i++) {
           list[num++] = table_cache_->NewIterator(options, files[i]->number,
-                                                  files[i]->file_size);
+                                                  files[i]->file_size,input_level1);
         }
       } else {
         // Create concatenating iterator for the files from this level
         list[num++] = NewTwoLevelIterator(
             new Version::LevelFileNumIterator(icmp_, &c->inputs_[which]),
-            &GetFileIterator, table_cache_, options);
+            &GetFileIterator, table_cache_, options, input_level2);
       }
     }
   }

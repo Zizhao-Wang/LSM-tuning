@@ -190,6 +190,7 @@ class SpecialEnv : public EnvWrapper {
         }
         return base_->Sync();
       }
+      uint64_t GetFileSize() const override {return 0;}
     };
     class ManifestFile : public WritableFile {
      private:
@@ -215,6 +216,7 @@ class SpecialEnv : public EnvWrapper {
           return base_->Sync();
         }
       }
+      uint64_t GetFileSize() const override {return 0;}
     };
 
     if (non_writable_.load(std::memory_order_acquire)) {
@@ -229,6 +231,7 @@ class SpecialEnv : public EnvWrapper {
         *r = new ManifestFile(this, *r);
       }
     }
+
     return s;
   }
 

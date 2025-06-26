@@ -102,6 +102,7 @@ class StringSink : public WritableFile {
     contents_.append(data.data(), data.size());
     return Status::OK();
   }
+  uint64_t GetFileSize() const override {return 0;}
 
  private:
   std::string contents_;

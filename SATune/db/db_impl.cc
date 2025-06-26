@@ -14,7 +14,9 @@
 #include <iomanip>  // 包含 setprecision
 #include <set>
 #include <string>
+#include <chrono>
 #include <vector>
+#include <inttypes.h>  
 
 #include "db/builder.h"
 #include "db/db_iter.h"
@@ -107,6 +109,7 @@ Options SanitizeOptions(const std::string& dbname,
   ClipToRange(&result.write_buffer_size, 64 << 10, 1 << 30);
   ClipToRange(&result.max_file_size, 1 << 20, 1 << 30);
   ClipToRange(&result.block_size, 1 << 10, 4 << 20);
+
   if (result.info_log == nullptr) {
     // Open a log file in the same directory as the db
     src.env->CreateDir(dbname);  // In case it does not exist
@@ -117,6 +120,24 @@ Options SanitizeOptions(const std::string& dbname,
       result.info_log = nullptr;
     }
   }
+
+  if (result.version_debug_log_ == nullptr) {
+    src.env->RenameFile(VersionDebugLogFileName(dbname), OldVersionDebugLogFileName(dbname));
+    Status s = src.env->NewLogger(VersionDebugLogFileName(dbname), &result.version_debug_log_);
+    if (!s.ok()) {
+      // No place suitable for logging
+      result.version_debug_log_ = nullptr;
+    }
+  }
+  
+  if (result.level_compaction_log_ == nullptr) {
+    Status s = src.env->NewLogger(src.level_compaction_log_filename, &result.level_compaction_log_);
+    if (!s.ok()) {
+      // No place suitable for logging
+      result.level_compaction_log_ = nullptr;
+    }
+  }
+
   if (result.block_cache == nullptr) {
     result.block_cache = NewLRUCache(8 << 20);
   }
@@ -163,7 +184,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       background_flush_scheduled_(false),
       manual_compaction_(nullptr),
       versions_(new VersionSet(dbname_, &options_, table_cache_,
-                               &internal_comparator_, &compaction_opts_atomic_)) {}
+                               &internal_comparator_, &compaction_opts_atomic_,&log_and_apply_stats_)) {}
 
 DBImpl::~DBImpl() {
 
@@ -251,6 +272,102 @@ void DBImpl::MaybeIgnoreError(Status* s) const {
   }
 }
 
+// This is a specialized version used by compactMemtable, designed to be called
+// only by the flush thread (CompactMemTable). Its only job is to delete
+// obsolete WAL log files. It MUST NOT delete any table files.
+void DBImpl::RemoveObsoleteLogFiles() {
+
+  metadata_mutex_.AssertHeld();
+
+  if (!bg_error_.ok()) {
+    // After a background error, we don't know whether a new version may
+    // or may not have been committed, so we cannot safely garbage collect.
+    return;
+  }
+
+  std::vector<std::string> filenames;
+  env_->GetChildren(dbname_, &filenames);  // Ignoring errors on purpose
+  uint64_t number;
+  FileType type;
+  std::vector<std::string> files_to_delete;
+
+  for (std::string& filename : filenames) {
+    if (ParseFileName(filename, &number, &type)) {
+      bool keep = true;
+      switch (type) {
+        case kLogFile:
+          // This is the only file type we are interested in deleting.
+          // Keep the current log and the previous log (if any).
+          keep = ((number >= versions_->LogNumber()) || (number == versions_->PrevLogNumber()));
+          break;
+        // For all other file types, we KEEP them. This function must not
+        // touch Table files, Manifests, etc.
+        default:
+          keep = true;
+          break;
+      }
+
+      if (!keep) {
+        files_to_delete.push_back(std::move(filename));
+        Log(options_.info_log, "[Flush Thread] Delete type=%d #%lld\n",static_cast<int>(type), static_cast<unsigned long long>(number));
+      }
+    }
+  }
+
+  // While deleting all files unblock other threads.
+  metadata_mutex_.Unlock();
+  for (const std::string& filename : files_to_delete) {
+    env_->RemoveFile(dbname_ + "/" + filename);
+  }
+  metadata_mutex_.Lock();
+}
+
+// This is a specialized cleanup function for the compaction thread.
+// Its only job is to delete the specific input SSTable files for a given
+// compaction task. It gets the list of inputs directly from the Compaction object.
+void DBImpl::RemoveCompactionInputFiles(const Compaction* c) {
+  metadata_mutex_.AssertHeld();
+
+  if (!bg_error_.ok()) {
+    return; // Do not clean up if there was a background error.
+  }
+
+  // Collect the file numbers of all input files for this compaction.
+  std::vector<uint64_t> level_files;
+  for (size_t i = 0; i < c->num_input_files(0); i++) {
+    level_files.push_back(c->input(0, i)->number);
+  }
+
+  std::vector<uint64_t> level_plus_1_files;
+  for (size_t i = 0; i < c->num_input_files(1); i++) {
+    level_plus_1_files.push_back(c->input(1, i)->number);
+  }
+
+  // Unlock the mutex while performing slow file I/O.
+  metadata_mutex_.Unlock();
+
+  const int level = c->level();
+  for (size_t i = 0; i < level_files.size(); i++) {
+    const uint64_t file_number = level_files[i];
+    table_cache_->Evict(file_number);
+    std::string filename = TableFileName(options_, dbname_, file_number, level);
+    env_->RemoveFile(filename);
+    Log(options_.info_log,"[Compaction Thread] Deleted input file #%llu from level %d\n",
+      static_cast<unsigned long long>(file_number), level);
+  }
+
+  const int level_plus_1 = c->level() + 1;
+  for (size_t i = 0; i < level_plus_1_files.size(); i++) {
+    const uint64_t file_number = level_plus_1_files[i];
+    table_cache_->Evict(file_number);
+    std::string filename = TableFileName(options_, dbname_, file_number, level_plus_1);
+    env_->RemoveFile(filename);
+    Log(options_.info_log,"[Compaction Thread] Deleted input file #%llu from level %d\n",
+      static_cast<unsigned long long>(file_number), level_plus_1);
+  }
+
+  metadata_mutex_.Lock();
+}
 
 
 void DBImpl::RemoveObsoleteFiles2() {
@@ -434,7 +551,8 @@ Status DBImpl::RecoverLogFile(uint64_t log_number, bool last_log,
   // Open the log file
   std::string fname = LogFileName(dbname_, log_number);
   SequentialFile* file;
-  Status status = env_->NewSequentialFile(fname, &file);
+  bool direct_open_log_file = options_.use_direct_reads_for_recovery;
+  Status status = env_->NewSequentialFile(fname, &file, direct_open_log_file);
   if (!status.ok()) {
     MaybeIgnoreError(&status);
     return status;
@@ -549,7 +667,19 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   Status s;
   {
     metadata_mutex_.Unlock();
-    s = BuildTableWithVariance(dbname_, env_, options_, table_cache_, iter, &meta, &table_variance, &table_unique, &table_total_keys);
+    
+    // auto start = std::chrono::high_resolution_clock::now();
+    // if(options_.merge_versions_on_flush){
+    //   s = BuildTableWithVarianceWiMerge(dbname_, env_, options_, table_cache_, iter, &meta, &table_variance, &table_unique, &table_total_keys);
+    // }else{
+    //   s = BuildTableWithVarianceWoMerge(dbname_, env_, options_, table_cache_, iter, &meta, &table_variance, &table_unique, &table_total_keys);
+    // }
+    s = BuildTable2(dbname_, env_, options_, table_cache_, iter, &meta, &table_variance, &table_unique, &table_total_keys);
+    // auto stop = std::chrono::high_resolution_clock::now();
+    // auto duration = std::chrono::duration_cast<std::chrono::microseconds>(stop - start);
+    // l0_time += duration.count();
+    // fprintf (stderr,"BuildTable2 execution time: %.3fs \n", l0_time/1e6);
+
     metadata_mutex_.Lock();
   }
 
@@ -583,8 +713,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
     current_stats_ptr_->unique_keys += table_unique;
     current_stats_ptr_->total_keys += table_total_keys;
     current_stats_ptr_->average_kvs_in_each_file = current_stats_ptr_->average_kvs_in_each_file==0 ? table_unique : (current_stats_ptr_->average_kvs_in_each_file+table_unique)/2;
-    // fprintf(stderr, 
-    //   "The %lu-th Table statistics in level %d:\n"
+    // fprintf(stderr, "The %lu-th Table statistics in level %d:\n"
     //   " - Table variance: %.3f\n"
     //   " - Accumulated variance: %.3f\n"
     //   " - Average variance (current table & accumulated): %.3f\n"
@@ -653,15 +782,6 @@ void DBImpl::CompactMemTable() {
   L0TuningSystemState current_tuning_state = l0_tuning_state_.load(std::memory_order_acquire);
   if(versions_->IsL0NeedsCompaction() && current_tuning_state == L0TuningSystemState::IDLE){
     MaybeAdjustC0();
-    {
-      // bool needs          = versions_->NeedsCompaction();
-      // int  l0_files       = versions_->NumLevelFiles(0);
-      // double comp_score   = versions_->GetCurrentCompactionScore();
-      // int    comp_trigger = compaction_opts_atomic_.level0_compaction_trigger.load(std::memory_order_relaxed);
-      // fprintf(stderr,
-      //   "[DBG CompactMemTable] NeedsCompaction=%d, L0_files=%d, compaction_score=%.3f, "
-      //   "level0_compaction_trigger=%d\n",static_cast<int>(needs),l0_files,comp_score,comp_trigger);
-    }
   }
 }
 
@@ -684,8 +804,7 @@ void DBImpl::CompactMemTable(MemTable* mem_to_deal) {
   if (s.ok()) {
     edit.SetPrevLogNumber(0);
     edit.SetLogNumber(logfile_number_);  // Earlier logs no longer needed
-    s = versions_->LogAndApply(&edit, &metadata_mutex_);
-    
+    s = versions_->LogAndApply(&edit, &metadata_mutex_, CallerView::kFlush);
   }
 
   if (s.ok()) {
@@ -693,7 +812,7 @@ void DBImpl::CompactMemTable(MemTable* mem_to_deal) {
     // imm_->Unref();
     // imm_ = nullptr;
     // has_imm_.store(false, std::memory_order_release);
-    RemoveObsoleteFiles2();
+    RemoveObsoleteLogFiles();
     num_level0_files_.store(versions_->NumLevelFiles(0), std::memory_order_relaxed);
   } else {
     RecordBackgroundError(s);
@@ -702,6 +821,15 @@ void DBImpl::CompactMemTable(MemTable* mem_to_deal) {
   L0TuningSystemState current_tuning_state = l0_tuning_state_.load(std::memory_order_acquire);
   if(versions_->IsL0NeedsCompaction() && current_tuning_state == L0TuningSystemState::IDLE){
     MaybeAdjustC0();
+    {
+      // bool needs          = versions_->NeedsCompaction();
+      // int  l0_files       = versions_->NumLevelFiles(0);
+      // double comp_score   = versions_->GetCurrentCompactionScore();
+      // int    comp_trigger = compaction_opts_atomic_.level0_compaction_trigger.load(std::memory_order_relaxed);
+      // fprintf(stderr,
+      //   "[DBG CompactMemTable] NeedsCompaction=%d, L0_files=%d, compaction_score=%.3f, "
+      //   "level0_compaction_trigger=%d\n",static_cast<int>(needs),l0_files,comp_score,comp_trigger);
+    }
   }
 }
 
@@ -846,15 +974,16 @@ void DBImpl::FlushCall() {
     bool schedule_compaction = false;
     if (mem_to_flush != nullptr ) {
       // running_background_threads_.fetch_add(1, std::memory_order_relaxed);
-      CompactMemTable(mem_to_flush); 
+      // bg_compaction_level_.store(0, std::memory_order_relaxed); 
+      CompactMemTable(mem_to_flush);
+      // bg_compaction_level_.store(-1, std::memory_order_relaxed); 
+
       mem_to_flush->Unref();
       // running_background_threads_.fetch_sub(1, std::memory_order_relaxed);
       if (versions_->NeedsCompaction() && running_background_threads_.load()==0) {
         MaybeScheduleCompaction(); 
       } 
     }
-
-
   }
 
   {
@@ -882,7 +1011,7 @@ void DBImpl::MaybeScheduleCompaction(bool already_locked) {
 
   {
     MutexLock l(&metadata_mutex_);
-    fprintf(stderr, "[Flush Thread]: Signaling compaction thread that state has changed.\n");
+    // fprintf(stderr, "[Flush Thread]: Signaling compaction thread that state has changed.\n");
     compaction_cv_.SignalAll(); 
   } 
 
@@ -903,31 +1032,38 @@ void DBImpl::BGWork(void* db) {
 }
 
 void DBImpl::BackgroundCall() {
-  MutexLock l(&metadata_mutex_);
+
   while (!shutting_down_.load(std::memory_order_acquire)) {
     // 2. 检查是否有工作可做。如果没有，就等待。
     //    使用 while 循环可以防止“虚假唤醒”，确保醒来后条件真的满足。
+    metadata_mutex_.Lock();
     while (!versions_->NeedsCompaction() && !shutting_down_.load(std::memory_order_acquire) && bg_error_.ok()) {
-      fprintf(stderr, "[Compaction Thread]: No work to do, going to wait...\n");
+      // fprintf(stderr, "[Compaction Thread]: No work to do, going to wait...\n");
       compaction_cv_.Wait(); // 等待 Flush 线程的“门铃”信号
-      fprintf(stderr, "[Compaction Thread]: Woke up, re-checking for work.\n");
+      // fprintf(stderr, "[Compaction Thread]: Woke up, re-checking for work.\n");
     }
 
     // 如果被唤醒是因为关闭或出错，则退出循环
     if (shutting_down_.load(std::memory_order_acquire) || !bg_error_.ok()) {
+      metadata_mutex_.Unlock();
       break;
     }
-    
-    fprintf(stderr, "[Compaction Thread]: ---> Starting a major compaction.\n");
+    int compacted_level = versions_->LevelNeedsCompaction();
+    bg_compaction_level_.store(compacted_level, std::memory_order_relaxed);
+
+    metadata_mutex_.Unlock();
+    // fprintf(stderr, "[Compaction Thread]: ---> Starting a major compaction.\n");
     running_background_threads_.fetch_add(1, std::memory_order_relaxed);
 
     {
+      MutexLock l(&metadata_mutex_);
       BackgroundCompaction(); 
     }
     
-    
-    fprintf(stderr, "[Compaction Thread]: <--- Finished a major compaction.\n");
+    // fprintf(stderr, "[Compaction Thread]: <--- Finished a major compaction.\n");
     running_background_threads_.fetch_sub(1, std::memory_order_relaxed);
+    bg_compaction_level_.store(-1, std::memory_order_relaxed);
+
     // Wake up user threads that may be waiting
     {
       MutexLock l_main(&mutex_);
@@ -955,8 +1091,7 @@ void DBImpl::BackgroundCompaction() {
     if (c != nullptr) {
       manual_end = c->input(0, c->num_input_files(0) - 1)->largest;
     }
-    Log(options_.info_log,
-        "Manual compaction at level-%d from %s .. %s; will stop at %s\n",
+    Log(options_.info_log,"Manual compaction at level-%d from %s .. %s; will stop at %s\n",
         m->level, (m->begin ? m->begin->DebugString().c_str() : "(begin)"),
         (m->end ? m->end->DebugString().c_str() : "(end)"),
         (m->done ? "(end)" : manual_end.DebugString().c_str()));
@@ -979,7 +1114,7 @@ void DBImpl::BackgroundCompaction() {
     c->edit()->RemoveFile(c->level(), f->number);
     c->edit()->AddFile(c->level() + 1, f->number, f->file_size, f->smallest,
                        f->largest);
-    status = versions_->LogAndApply(c->edit(), &metadata_mutex_);
+    status = versions_->LogAndApply(c->edit(), &metadata_mutex_, CallerView::kCompaction);
     if (!status.ok()) {
       RecordBackgroundError(status);
     }
@@ -1009,6 +1144,7 @@ void DBImpl::BackgroundCompaction() {
     // fprintf(stderr,
     //   "[DBG BackgroundCompaction] DoCompactionWork: level=%d, files=%d, type=%d\n",
     //    c->level(), c->num_input_files(0), ctype);
+    
     l0_tuning_state_.store(L0TuningSystemState::L0_COMPACTION_RUNNING, std::memory_order_release);
     CompactionState* compact = new CompactionState(c);
     status = DoCompactionWork(compact);
@@ -1017,14 +1153,15 @@ void DBImpl::BackgroundCompaction() {
     }
     CleanupCompaction(compact);
     c->ReleaseInputs();
-    RemoveObsoleteFiles2();
+    RemoveCompactionInputFiles(c);
 
   }
   delete c;
 
   num_level0_files_.store(versions_->NumLevelFiles(0), std::memory_order_relaxed);
+  
 
-  fprintf(stderr,"[DBG BackgroundCompaction] Exit: status.ok=%d\n", status.ok());
+  // fprintf(stderr,"[DBG BackgroundCompaction] Exit: status.ok=%d\n", status.ok());
   if (status.ok()) {
     // Done
   } else if (shutting_down_.load(std::memory_order_acquire)) {
@@ -1082,21 +1219,28 @@ Status DBImpl::OpenCompactionOutputFile(CompactionState* compact) {
   }
 
   // Make the output file
-  std::string fname = TableFileName(dbname_, file_number);
-  Status s = env_->NewWritableFile(fname, &compact->outfile);
+  const int output_level = compact->compaction->level() + 1;
+  std::string fname = TableFileName(options_, dbname_, file_number, output_level);
+
+  bool using_direct_writeappend_file = options_.use_direct_writeappend_file;
+  Log(options_.info_log,"[Compaction DBG] Attempting to create new direct?(%d) output file: %s", using_direct_writeappend_file, fname.c_str());
+  Status s = env_->NewWritableFile(fname, &compact->outfile,using_direct_writeappend_file);
   if (s.ok()) {
     compact->builder = new TableBuilder(options_, compact->outfile);
+  }else{
+    Log(options_.info_log, "[Compaction DBG] FATAL: env_->NewWritableFile failed for file #%llu (%s). Status: %s",
+      static_cast<unsigned long long>(file_number),fname.c_str(), s.ToString().c_str());
   }
   return s;
 }
 
-Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
-                                          Iterator* input) {
+Status DBImpl::FinishCompactionOutputFile(CompactionState* compact, Iterator* input) {
   assert(compact != nullptr);
   assert(compact->outfile != nullptr);
   assert(compact->builder != nullptr);
 
   const uint64_t output_number = compact->current_output()->number;
+  const int output_level = compact->compaction->level() + 1; // 我们已经知道输出 level
   assert(output_number != 0);
 
   // Check for iterator errors
@@ -1126,7 +1270,7 @@ Status DBImpl::FinishCompactionOutputFile(CompactionState* compact,
   if (s.ok() && current_entries > 0) {
     // Verify that the table is usable
     Iterator* iter =
-        table_cache_->NewIterator(ReadOptions(), output_number, current_bytes);
+        table_cache_->NewIterator(ReadOptions(), output_number,current_bytes,output_level);
     s = iter->status();
     delete iter;
     if (s.ok()) {
@@ -1154,7 +1298,7 @@ Status DBImpl::InstallCompactionResults(CompactionState* compact) {
     compact->compaction->edit()->AddFile(level + 1, out.number, out.file_size,
                                          out.smallest, out.largest);
   }
-  return versions_->LogAndApply(compact->compaction->edit(), &metadata_mutex_);
+  return versions_->LogAndApply(compact->compaction->edit(), &metadata_mutex_, CallerView::kCompaction);
 }
 
 // In db/db_impl.cc
@@ -1182,7 +1326,7 @@ bool DBImpl::CheckAndHandleBatch(L0VarianceStats& baseline, L0VarianceStats& bat
   // Ensure both have data to compare
   if (baseline.total_keys == 0 || batch.total_keys == 0 || baseline.table_number == 0 || batch.table_number == 0) {
     Log(options_.info_log, "[C0 Adapt Batch] Cannot compare, baseline or batch is empty.\n");
-    fprintf(stderr, "[C0 Adapt Batch] Cannot compare, baseline or batch is empty.\n");
+    // fprintf(stderr, "[C0 Adapt Batch] Cannot compare, baseline or batch is empty.\n");
     // If baseline is empty, maybe make the current batch the new baseline?
     // For now, let's return false, meaning "not similar enough to proceed".
     return false; 
@@ -1218,7 +1362,7 @@ bool DBImpl::CheckAndHandleBatch(L0VarianceStats& baseline, L0VarianceStats& bat
 
   // --- Handle Result ---
   if (is_similar) {
-    fprintf(stderr, "[C0 Adapt Batch] Batches are SIMILAR. Workload seems stable. Resetting batch.\n");
+    // fprintf(stderr, "[C0 Adapt Batch] Batches are SIMILAR. Workload seems stable. Resetting batch.\n");
     Log(options_.info_log, "[C0 Adapt Batch] Batches are SIMILAR. Workload seems stable. Resetting batch.\n");
     // Workload seems stable, so we "merge" the easy stats (total keys, table number)
     // We DO NOT merge unique_keys directly. 
@@ -1239,9 +1383,9 @@ bool DBImpl::CheckAndHandleBatch(L0VarianceStats& baseline, L0VarianceStats& bat
     Log(options_.info_log, 
       "[C0 Adapt Batch WARN] Batches are DIFFERENT. Workload may have changed (Baseline_AvgVar:%.3f, Batch_AvgVar:%.3f).",
       avg_var_baseline, avg_var_batch);
-    fprintf(stderr, 
-      "[C0 Adapt Batch WARN] Batches are DIFFERENT. Workload may have changed (Baseline_AvgVar:%.3f, Batch_AvgVar:%.3f).\n",
-      avg_var_baseline, avg_var_batch);
+    // fprintf(stderr, 
+    //   "[C0 Adapt Batch WARN] Batches are DIFFERENT. Workload may have changed (Baseline_AvgVar:%.3f, Batch_AvgVar:%.3f).\n",
+    //   avg_var_baseline, avg_var_batch);
     // Workload changed! This is a Red Flag.
     // What should we do?
     // Option 1: Reset the batch anyway and let the next L0 compaction handle it. (Simpler)
@@ -1381,6 +1525,29 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     level_stats_[compact->compaction->level()].number_seek_compaction_initiator_files += compact->compaction->num_input_files(0);
     level_stats_[compact->compaction->level()+1].number_seek_compaction_participant_files += compact->compaction->num_input_files(1);
   }
+  // std::string input_files_l0;
+  // for (size_t i = 0; i < compact->compaction->num_input_files(0); ++i) {
+  //   input_files_l0 += std::to_string(compact->compaction->input(0, i)->number);
+  //   if (i < compact->compaction->num_input_files(0) - 1) {
+  //     input_files_l0 += ", ";
+  //   }
+  // }
+  // Log(options_.info_log, "[Compaction Inputs] Level-%d files: [ %s ]", 
+  //   compact->compaction->level(), input_files_l0.c_str());
+
+  // 2. 打印 level-n+1 的输入文件号
+  // compact->compaction->inputs_[1] 是 level-n+1 的输入文件元数据 vector
+  // if (compact->compaction->num_input_files(1) > 0) {
+  //   std::string input_files_l1;
+  //   for (size_t i = 0; i < compact->compaction->num_input_files(1); ++i) {
+  //     input_files_l1 += std::to_string(compact->compaction->input(1, i)->number);
+  //     if (i < compact->compaction->num_input_files(1) - 1) {
+  //       input_files_l1 += ", ";
+  //     }
+  //   }
+  //   Log(options_.info_log, "[Compaction Inputs] Level-%d files: [ %s ]", 
+  //     compact->compaction->level() + 1, input_files_l1.c_str());
+  // }
   //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
 
   // 这个 compact->compaction->level() 是指当前 compaction 的 level，也是就是哪个level需要被合并
@@ -1417,6 +1584,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
         compact->builder != nullptr) {
       status = FinishCompactionOutputFile(compact, input);
       if (!status.ok()) {
+        Log(options_.info_log, "[Compaction DBG] Error in FinishCompactionOutputFile (inside loop) at level %d: %s",
+          compact->compaction->level(), status.ToString().c_str());
         break;
       }
     }
@@ -1473,6 +1642,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
       if (compact->builder == nullptr) {
         status = OpenCompactionOutputFile(compact);
         if (!status.ok()) {
+          Log(options_.info_log, "[Compaction DBG] Error in OpenCompactionOutputFile at L%d->L%d merge: %s",
+            compact->compaction->level(),compact->compaction->level()+1, status.ToString().c_str());
           break;
         }
       }
@@ -1487,6 +1658,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
           compact->compaction->MaxOutputFileSize()) {
         status = FinishCompactionOutputFile(compact, input);
         if (!status.ok()) {
+          Log(options_.info_log, "[Compaction DBG] Error in FinishCompactionOutputFile (file size:%ld limit:%ld) at L%d->L%d merge: %s",
+            compact->builder->FileSize(), compact->compaction->MaxOutputFileSize(), compact->compaction->level(),compact->compaction->level()+1, status.ToString().c_str());
           break;
         }
       }
@@ -1496,10 +1669,16 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   }
 
   if (status.ok() && shutting_down_.load(std::memory_order_acquire)) {
+    Log(options_.info_log, "[Compaction DBG] Compaction aborted bacause shutdoenwn at level %d: %s",
+      compact->compaction->level(), status.ToString().c_str());
     status = Status::IOError("Deleting DB during compaction");
   }
   if (status.ok() && compact->builder != nullptr) {
     status = FinishCompactionOutputFile(compact, input);
+    if (!status.ok()) {
+      Log(options_.info_log, "[Compaction DBG] Error in final FinishCompactionOutputFile at level %d: %s",
+        compact->compaction->level(), status.ToString().c_str());
+    }
   }
   if (status.ok()) {
     status = input->status();
@@ -1508,13 +1687,8 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   input = nullptr;
 
   CompactionStats stats;
-  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
-  uint64_t init_level_bytes_read = 0;
-  //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
-
   stats.micros = env_->NowMicros() - start_micros - imm_micros;
   for (int which = 0; which < 2; which++) {
-
     for (int i = 0; i < compact->compaction->num_input_files(which); i++) {
       stats.bytes_read += compact->compaction->input(which, i)->file_size;
     }
@@ -1530,7 +1704,10 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     l0compaction_stats.unique_keys_in = unique_KVs_in_compaction;
     l0compaction_stats.total_keys_out = unique_KVs_writes_after_compaction;
     l0compaction_stats.num_l0_files = compact->compaction->num_input_files(0);
+    l0compaction_stats.num_l1_files_in = compact->compaction->num_input_files(1);
   }
+  l0compaction_stats.CalculateDerivedStats();
+  l0compaction_stats.Print();
 
   stats_[compact->compaction->level() + 1].Add(stats);
   level_stats_[compact->compaction->level() + 1].bytes_read += stats.bytes_read;
@@ -1540,10 +1717,15 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     status = InstallCompactionResults(compact);
   }
   if (!status.ok()) {
+    Log(options_.info_log, "[Compaction DBG] Final status not OK before returning at level %d: %s",
+      compact->compaction->level(), status.ToString().c_str());
     RecordBackgroundError(status);
   }
   VersionSet::LevelSummaryStorage tmp;
   Log(options_.info_log, "compacted to: %s", versions_->LevelSummary(&tmp));
+  Log(options_.level_compaction_log_, "[Compaction Summary] L%d->L%d | Read: %d files (%lld bytes) | Write: %zu files (%lld bytes) | Time: %lld micros",
+    compact->compaction->level(),compact->compaction->level() + 1,compact->compaction->num_input_files(0) + compact->compaction->num_input_files(1),
+    (long long)stats.bytes_read,compact->outputs.size(),(long long)stats.bytes_written, (long long)stats.micros);
   return status;
 }
 
@@ -1706,14 +1888,22 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
 
   writers_.push_back(&w);
   while (!w.done && &w != writers_.front()) {
+    // auto queue_wait_start = std::chrono::high_resolution_clock::now();
     w.cv.Wait();
+    // auto queue_wait_end = std::chrono::high_resolution_clock::now();
+    // total_queue_wait_micros_.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(queue_wait_end - queue_wait_start).count(), std::memory_order_relaxed);
   }
   if (w.done) {
     return w.status;
   }
 
   // May temporarily unlock and wait.
+  // auto makeroom_start = std::chrono::high_resolution_clock::now();
   Status status = MakeRoomForWrite(updates == nullptr);
+  // auto makeroom_end = std::chrono::high_resolution_clock::now();
+  // auto makeroom_duration = std::chrono::duration_cast<std::chrono::microseconds>(makeroom_end - makeroom_start).count();
+  // total_makeroom_micros_.fetch_add(makeroom_duration, std::memory_order_relaxed);
+
   uint64_t last_sequence = versions_->LastSequence();
   Writer* last_writer = &w;
   if (status.ok() && updates != nullptr) {  // nullptr batch is for compactions
@@ -1727,16 +1917,29 @@ Status DBImpl::Write(const WriteOptions& options, WriteBatch* updates) {
     // into mem_.
     {
       mutex_.Unlock();
+
+      // auto wal_start = std::chrono::high_resolution_clock::now();
       status = log_->AddRecord(WriteBatchInternal::Contents(write_batch));
+      // auto wal_end = std::chrono::high_resolution_clock::now();
+      // total_wal_time_micros_.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(wal_end - wal_start).count(), std::memory_order_relaxed);
+
       bool sync_error = false;
       if (status.ok() && options.sync) {
+
+        // auto sync_start = std::chrono::high_resolution_clock::now();
         status = logfile_->Sync();
+        // auto sync_end = std::chrono::high_resolution_clock::now();
+        // total_sync_time_micros_.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(sync_end - sync_start).count(), std::memory_order_relaxed);
+
         if (!status.ok()) {
           sync_error = true;
         }
       }
       if (status.ok()) {
+        // auto mem_start = std::chrono::high_resolution_clock::now();
         status = WriteBatchInternal::InsertInto(write_batch, mem_);
+        // auto mem_end = std::chrono::high_resolution_clock::now();
+        // total_memtable_time_micros_.fetch_add(std::chrono::duration_cast<std::chrono::microseconds>(mem_end - mem_start).count(), std::memory_order_relaxed);
       }
       mutex_.Lock();
       if (sync_error) {
@@ -1854,9 +2057,20 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       // individual write by 1ms to reduce latency variance.  Also,
       // this delay hands over some CPU to the compaction thread in
       // case it is sharing the same core as the writer.
-      RecordWriteStall(false);  
+      // RecordWriteStall(false);  
       mutex_.Unlock();
       env_->SleepForMicroseconds(1000);
+
+      const int compaction_level = bg_compaction_level_.load(std::memory_order_relaxed);
+      if (compaction_level >= 0 && compaction_level < config::kNumLevels) {
+        level_stall_stats_[compaction_level].slowdown_micros.fetch_add(1000, std::memory_order_relaxed);
+        level_stall_stats_[compaction_level].slowdown_count.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        // This covers cases where level is -1 (no compaction running) or invalid.
+        unknown_stall_stats_.slowdown_micros.fetch_add(1000, std::memory_order_relaxed);
+        unknown_stall_stats_.slowdown_count.fetch_add(1, std::memory_order_relaxed);
+      }
+
       allow_delay = false;  // Do not delay a single write more than once
       mutex_.Lock();
     } else if (!force &&
@@ -1865,22 +2079,59 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       break;
     } else if (needs_stop) {
       // There are too many level-0 files.
-      RecordWriteStall(true);  
-      Log(options_.info_log, "Too many L0 files; waiting...\n");
+      // RecordWriteStall(true);  
+      const int compaction_level = bg_compaction_level_.load(std::memory_order_relaxed);
+
+      Log(options_.info_log, "Too many L0 files; waiting...\n"); 
+      auto wait_start = std::chrono::high_resolution_clock::now();
       background_work_finished_signal_.Wait();
+      auto wait_end = std::chrono::high_resolution_clock::now();
+      auto wait_duration = std::chrono::duration_cast<std::chrono::microseconds>(wait_end - wait_start).count();
+      // Check if the compaction level is valid and use it as an array index.
+      if (compaction_level >= 0 && compaction_level < config::kNumLevels) {
+        level_stall_stats_[compaction_level].stop_micros.fetch_add(wait_duration, std::memory_order_relaxed);
+        level_stall_stats_[compaction_level].stop_count.fetch_add(1, std::memory_order_relaxed);
+      } else {
+        unknown_stall_stats_.stop_micros.fetch_add(wait_duration, std::memory_order_relaxed);
+        unknown_stall_stats_.stop_count.fetch_add(1, std::memory_order_relaxed);
+      }
     } else {
 
       if (imms_queue_size_.load(std::memory_order_relaxed) >= options_.max_immutable_memtables) {
         Log(options_.info_log, "Too many immutable memtables; waiting...\n");
-        fprintf(stderr,"We are waiting!\n");
-        flush_work_finished_signal_.Wait();
-        fprintf(stderr,"Waiting finished!\n");
+        // fprintf(stderr,"We are waiting! imms_queue_size=%ld\n", imms_queue_size_.load(std::memory_order_relaxed));
+        auto wait_start = std::chrono::high_resolution_clock::now();
+          flush_work_finished_signal_.Wait();
+        auto wait_end = std::chrono::high_resolution_clock::now();
+        auto wait_duration = std::chrono::duration_cast<std::chrono::microseconds>(wait_end - wait_start).count();
+        wait_queue_micros_.fetch_add(wait_duration, std::memory_order_relaxed);
+        // fprintf(stderr,"Waiting finished! imms_queue_size=%ld\n", imms_queue_size_.load(std::memory_order_relaxed));
       }
+      
       
       // Attempt to switch to a new memtable and trigger compaction of old
       assert(versions_->PrevLogNumber() == 0);
+      metadata_mutex_.Lock();
       uint64_t new_log_number = versions_->NewFileNumber();
+      metadata_mutex_.Unlock();
       WritableFile* lfile = nullptr;
+      
+      // --------------------------------------------------------------------------- 
+      uint64_t logical_wal_size = logfile_ ? logfile_->GetFileSize() : 0;
+      uint64_t physical_wal_size = 0;
+      Status s_sz = env_->GetFileSize(LogFileName(dbname_, logfile_number_), &physical_wal_size);
+      size_t mem_usage = mem_ ? mem_->ApproximateMemoryUsage() : 0;
+      // fprintf(stderr,"[SwitchMemtable] logical_wal=%" PRIu64 " (%.2f MiB) / "
+      //   "physical_wal=%" PRIu64 " (%.2f MiB) | "
+      //   "mem_usage=%zu (%.2f MiB) | "
+      //   "imm_queue=%zu\n",
+      //   logical_wal_size,  logical_wal_size  / 1048576.0,
+      //   physical_wal_size, physical_wal_size / 1048576.0,
+      //   mem_usage,         mem_usage         / 1048576.0,
+      //   imms_queue_size_.load(std::memory_order_relaxed));
+      // --------------------------------------------------------------------------- 
+
+      //We never use direct IO for sync logs.
       s = env_->NewWritableFile(LogFileName(dbname_, new_log_number), &lfile);
       if (!s.ok()) {
         // Avoid chewing through file number space in a tight loop.
@@ -1920,7 +2171,12 @@ Status DBImpl::MakeRoomForWrite(bool force) {
       mem_->Ref();
       force = false;  // Do not force another compaction if have room
 
+      // auto schedule_start = std::chrono::high_resolution_clock::now();
       MaybeScheduleFlush();
+      // auto schedule_end = std::chrono::high_resolution_clock::now();
+      // auto schedule_duration = std::chrono::duration_cast<std::chrono::microseconds>(schedule_end - schedule_start).count();
+      // total_schedule_micros_.fetch_add(schedule_duration, std::memory_order_relaxed);
+
     }
   }
   return s;
@@ -2027,6 +2283,92 @@ bool DBImpl::GetProperty_with_whole_lsm(const Slice& property, std::string* valu
 
     //  ~~~~~~~ WZZ's comments for his adding source codes ~~~~~~~
     // I modified this part for print more details of a whole LSM
+  value->append("--- Write Stalls per Level ---\n");
+  char buf_level[250];
+  long long total_stall_micros = 0;
+
+  for (int i = 0; i < config::kNumLevels; ++i) {
+    long long slow_micros = level_stall_stats_[i].slowdown_micros.load(std::memory_order_relaxed);
+    long long slow_count = level_stall_stats_[i].slowdown_count.load(std::memory_order_relaxed);
+    long long stop_micros = level_stall_stats_[i].stop_micros.load(std::memory_order_relaxed);
+    long long stop_count = level_stall_stats_[i].stop_count.load(std::memory_order_relaxed);
+
+    total_stall_micros += slow_micros + stop_micros;
+
+    if (slow_count > 0 || stop_count > 0) {
+      std::string details;
+      if (slow_count > 0) {
+        char part[100];
+        std::snprintf(part, sizeof(part), "Slowdown(Cnt:%lld,Time:%.2fs) ", slow_count, slow_micros / 1e6);
+        details.append(part);
+      }
+      if (stop_count > 0) {
+        char part[100];
+        std::snprintf(part, sizeof(part), "Stop(Cnt:%lld,Time:%.2fs)", stop_count, stop_micros / 1e6);
+        details.append(part);
+      }
+      std::snprintf(buf_level, sizeof(buf_level), "  Level-%d Stalls: %s\n", i, details.c_str());
+      value->append(buf_level);
+    }
+  }
+
+  // Handle Unknown Stalls
+  long long unknown_stop_micros = unknown_stall_stats_.stop_micros.load(std::memory_order_relaxed);
+  long long unknown_stop_count = unknown_stall_stats_.stop_count.load(std::memory_order_relaxed);
+  if (unknown_stop_count > 0) {
+    total_stall_micros += unknown_stop_micros;
+    std::snprintf(buf_level, sizeof(buf_level),"  Unknown Stalls: Stop(Cnt:%lld,Time:%.2fs)\n", unknown_stop_count, unknown_stop_micros / 1e6);
+    value->append(buf_level);
+  }
+
+  // Print Grand Total
+  std::snprintf(buf_level, sizeof(buf_level), "  Total Stalls:   %.2fs (%lld us)\n", total_stall_micros / 1e6, total_stall_micros);
+  value->append(buf_level);
+  value->append("--- Write Stalls per Level ---\n\n");
+
+  value->append("--- LogAndApply Conflict Stats ---\n");
+  char buf_stats[250];
+  long long flush_conflicts = log_and_apply_stats_.flush_conflicts.load(std::memory_order_relaxed);
+  long long compaction_conflicts = log_and_apply_stats_.compaction_conflicts.load(std::memory_order_relaxed);
+  std::snprintf(buf_stats, sizeof(buf_stats),"  Total Conflicts: %lld (Flush: %lld, Compaction: %lld)\n",
+    flush_conflicts + compaction_conflicts, flush_conflicts, compaction_conflicts);
+  value->append(buf_stats);
+
+  // if (!log_and_apply_stats_.recent_conflicts.empty()) {
+    // value->append("  Recent Conflicts (Caller, Level, BaseVer -> NewVer):\n");
+    // for (const auto& log : log_and_apply_stats_.recent_conflicts) {
+    //   const char* type_str = (log.type == CallerView::kFlush) ? "Flush" : "Compaction";
+    //   std::snprintf(buf_stats, sizeof(buf_stats),"    - %s, %llu -> %llu changes\n",
+    //     type_str, static_cast<unsigned long long>(log.base_version_id),
+    //     static_cast<unsigned long long>(log.new_version_id));
+    //   value->append(buf_stats);
+    // }
+  // }
+  value->append("--- LogAndApply Conflict Stats ---\n\n");
+
+    // char schedule_buf[52];
+    // long long total_sched_micros = total_schedule_micros_.load(std::memory_order_relaxed);
+    // double total_sched_seconds = total_sched_micros / 1000000.0;
+    // std::snprintf(schedule_buf, sizeof(schedule_buf),"MaybeScheduleFlush-Time: %.2f seconds (%lld us)\n", total_sched_seconds, total_sched_micros);
+    // value->append(schedule_buf);
+
+    char buf2[50]; 
+    long long wal_micros = total_wal_time_micros_.load(std::memory_order_relaxed);
+    std::snprintf(buf2, sizeof(buf2), "WAL-Write-Time: %.2f seconds (%lld us) ", wal_micros / 1e6, wal_micros);
+    value->append(buf2);
+    long long sync_micros = total_sync_time_micros_.load(std::memory_order_relaxed);
+    std::snprintf(buf2, sizeof(buf2), "WAL-Sync-Time: %.2f seconds (%lld us)\n", sync_micros / 1e6, sync_micros);
+    value->append(buf2);
+    long long mem_micros = total_memtable_time_micros_.load(std::memory_order_relaxed);
+    std::snprintf(buf2, sizeof(buf2), "Memtable-Write-Time: %.2f seconds (%lld us) ", mem_micros / 1e6, mem_micros);
+    value->append(buf2);
+    long long queue_micros = total_queue_wait_micros_.load(std::memory_order_relaxed);
+    std::snprintf(buf2, sizeof(buf2), "Writer-Queue-Wait-Time: %.2f seconds (%lld us)\n", queue_micros / 1e6, queue_micros);
+    value->append(buf2);
+    // long long mr_micros = total_makeroom_micros_.load(std::memory_order_relaxed);
+    // std::snprintf(buf2, sizeof(buf2), "Total-MakeRoomForWrite-Time: %.2f seconds (%lld us)\n", mr_micros / 1e6, mr_micros);
+    // value->append(buf2);
+
     double user_io = 0;
     double total_io = 0;
     char buf[250];
@@ -2044,27 +2386,16 @@ bool DBImpl::GetProperty_with_whole_lsm(const Slice& property, std::string* valu
       if (stats_[level].micros > 0 || files > 0) {
         std::snprintf(buf, sizeof(buf), "%5d %5d %7.0f %7.0f %8.0f %8.0f %9.0f %9.0f %6d %7d %5d %5d %7d %5d %6d %5d %9d %8f %8f\n",
                       level, files, versions_->NumLevelBytes(level) / 1048576.0,
-                      stats_[level].micros / 1e6,
-                      stats_[level].bytes_read / 1048576.0,
-                      stats_[level].bytes_read / 1048576.0,            
-                      stats_[level].bytes_written / 1048576.0,
-                      stats_[level].bytes_written / 1048576.0,                      
-                      level_stats_[level].number_manual_compaction,
-                      level_stats_[level].number_size_compaction,
-                      level_stats_[level].number_size_compaction_initiator_files,
-                      level_stats_[level].number_size_compaction_participant_files,
-                      level_stats_[level].number_seek_compaction,
-                      level_stats_[level].number_seek_compaction_initiator_files,
+                      stats_[level].micros / 1e6,stats_[level].bytes_read / 1048576.0,stats_[level].bytes_read / 1048576.0,            
+                      stats_[level].bytes_written / 1048576.0, stats_[level].bytes_written / 1048576.0,                      
+                      level_stats_[level].number_manual_compaction,level_stats_[level].number_size_compaction,
+                      level_stats_[level].number_size_compaction_initiator_files,level_stats_[level].number_size_compaction_participant_files,
+                      level_stats_[level].number_seek_compaction,level_stats_[level].number_seek_compaction_initiator_files,
                       level_stats_[level].number_seek_compaction_participant_files,
-                      level_stats_[level].number_of_compactions,
-                      level_stats_[level].number_TrivialMove,
+                      level_stats_[level].number_of_compactions,level_stats_[level].number_TrivialMove,
                       level_stats_[level].moved_directly_from_last_level_bytes / 1048576.0,
                       level_stats_[level].moved_from_this_level_bytes / 1048576.0);
-        value->append(buf);
-        int a=0;
-        if(level == 0){
-          continue;
-        }     
+        value->append(buf);   
       }
     }
     snprintf(buf, sizeof(buf), "user_io:%.3fMB total_ios: %.3fMB WriteAmplification: %2.4f", user_io, total_io, total_io/ user_io);
@@ -2147,8 +2478,7 @@ Status DB::Open(const Options& options, const std::string& dbname, DB** dbptr) {
     // Create new log and a corresponding memtable.
     uint64_t new_log_number = impl->versions_->NewFileNumber();
     WritableFile* lfile;
-    s = options.env->NewWritableFile(LogFileName(dbname, new_log_number),
-                                     &lfile);
+    s = options.env->NewWritableFile(LogFileName(dbname, new_log_number),&lfile);
     if (s.ok()) {
       edit.SetLogNumber(new_log_number);
       impl->logfile_ = lfile;

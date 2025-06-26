@@ -63,9 +63,17 @@ std::string InfoLogFileName(const std::string& dbname) {
   return dbname + "/LOG";
 }
 
+std::string VersionDebugLogFileName(const std::string& dbname) {
+  return dbname + "/VERSION_DEBUG";
+}
+
 // Return the name of the old info log file for "dbname".
 std::string OldInfoLogFileName(const std::string& dbname) {
   return dbname + "/LOG.old";
+}
+
+std::string OldVersionDebugLogFileName(const std::string& dbname) {
+  return dbname + "/VERSION_DEBUG.old";
 }
 
 // Owned filenames have the form:
@@ -137,5 +145,28 @@ Status SetCurrentFile(Env* env, const std::string& dbname,
   }
   return s;
 }
+
+static std::string GetBaseDirForLevel(const Options& options, const std::string& dbname, int level) {
+  if (options.level_paths.count(level)) {
+    // C++11 and later
+    return options.level_paths.at(level);
+    
+    // C++98 compatible
+    // std::map<int, std::string>::const_iterator it = options.level_paths.find(level);
+    // if (it != options.level_paths.end()) {
+    //     return it->second;
+    // }
+  }
+  return dbname; // 默认返回主DB路径
+}
+
+std::string TableFileName(const Options& options, const std::string& dbname,
+                          uint64_t number, int level) {
+  std::string base_dir = GetBaseDirForLevel(options, dbname, level);
+  char buf[100];
+  snprintf(buf, sizeof(buf), "/%06llu.ldb", static_cast<unsigned long long>(number));
+  return base_dir + buf;
+}
+
 
 }  // namespace leveldb

@@ -204,6 +204,7 @@ CMakeFiles/leveldb.dir/db/version_set.cc.o: \
  /usr/include/x86_64-linux-gnu/bits/mathcalls.h \
  /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
  /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/log_stats.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/filename.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_reader.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/log_format.h \

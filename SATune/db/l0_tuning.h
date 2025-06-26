@@ -55,47 +55,75 @@ namespace leveldb {
 	// Structure to hold statistics collected during L0 compaction for C0 tuning.
   struct L0TuningStatsInCompaction {
     // Total input keys read from L0 (+ L1 overlaps) during L0 compaction.
-    // L0 压缩期间从 L0 (+ L1 重叠部分) 读取的总输入键数。
     uint64_t total_keys_in = 0;
 
     // Unique input keys read from L0 (+ L1 overlaps) during L0 compaction.
-    // L0 压缩期间从 L0 (+ L1 重叠部分) 读取的唯一输入键数。
     uint64_t unique_keys_in = 0;
 
     // Total output keys written to L1 during L0 compaction.
-    // L0 压缩期间写入 L1 的总输出键数。
     uint64_t total_keys_out = 0;
 
     // Number of L0 files involved in this compaction.
-    // 本次 L0 压缩涉及的 L0 文件数量。
     int num_l0_files = 0;
 
     // Average unique keys per L0 input file.
-    // 每个 L0 输入文件的平均唯一键数。
     double average_unique_keys_per_file = 0.0;
 
+    // Number of L1 files involved in this compaction (overlapping files).
+    int num_l1_files_in = 0;
+
+    // Ratio of output keys to input keys (total_keys_out / total_keys_in).
+    // A lower value indicates higher compaction efficiency (more data discarded).
+    double discard_ratio = 0.0;
+
+
+
     // Default constructor to initialize all members to zero/default.
-    // 默认构造函数，将所有成员初始化为零或默认值。
     L0TuningStatsInCompaction() = default;
+
+
     // Method to calculate the average after collection (optional).
-    // 收集后计算平均值的方法（可选）。
-    void CalculateAverage() {
+    void CalculateDerivedStats() {
       if (num_l0_files > 0) {
-        average_unique_keys_per_file =
-            static_cast<double>(unique_keys_in) / num_l0_files;
+        average_unique_keys_per_file = static_cast<double>(unique_keys_in) / num_l0_files;
       } else {
         average_unique_keys_per_file = 0.0;
       }
+        
+      // 计算输出/输入比率 (即您定义的 discard_ratio)
+      if (total_keys_in > 0) {
+        discard_ratio = static_cast<double>(total_keys_out) / total_keys_in;
+      } else {
+        discard_ratio = 0.0;
+      }      
     }
 
     // Method to reset the stats (optional, useful for reuse).
-    // 重置统计数据的方法（可选，便于重用）。
     void Reset() {
-        total_keys_in = 0;
-        unique_keys_in = 0;
-        total_keys_out = 0;
-        num_l0_files = 0;
-        average_unique_keys_per_file = 0.0;
+      total_keys_in = 0;
+      unique_keys_in = 0;
+      total_keys_out = 0;
+      num_l0_files = 0;
+      average_unique_keys_per_file = 0.0;
+      num_l1_files_in = 0;
+      discard_ratio = 0.0;
+    }
+
+    /**
+     * @brief 使用 fprintf 以整齐、美观的格式打印统计信息。
+     * @param out 输出文件指针，默认为 stdout (标准输出)。
+     */
+    void Print(FILE* out = stdout) const {
+      fprintf(out, " L0 Compaction Tuning Stats \n");
+      fprintf(out, "------------------------------------------------\n");
+      fprintf(out, "Total keys in: %llu\n", (unsigned long long)total_keys_in);
+      fprintf(out, "Unique keys in: %llu\n", (unsigned long long)unique_keys_in);
+      fprintf(out, "Total keys out: %llu\n", (unsigned long long)total_keys_out);
+      fprintf(out, "Number of L0 files: %d\n", num_l0_files);
+      fprintf(out, "Number of L1 files (overlap): %d\n", num_l1_files_in);
+      fprintf(out, "Average unique keys per file: %.2f\n", average_unique_keys_per_file);
+      fprintf(out, "Output/Input ratio: %.2f\n", discard_ratio);
+      fprintf(out, "------------------------------------------------\n");
     }
   };
 	// You can define related constants here as well.

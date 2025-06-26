@@ -23,6 +23,7 @@
 #include "leveldb/compaction_options.h"
 #include "db/db_compaction_options.h"
 #include "db/l0_tuning.h" 
+#include "db/log_stats.h" 
 
 namespace leveldb {
 
@@ -31,7 +32,7 @@ class TableCache;
 class Version;
 class VersionEdit;
 class VersionSet;
-
+class Compaction;
 
 class DBImpl : public DB {
  public:
@@ -229,6 +230,9 @@ class DBImpl : public DB {
   std::atomic<uint64_t> last_c0_adjustment_time_{0};
 
 
+  LogAndApplyStats log_and_apply_stats_ GUARDED_BY(metadata_mutex_);
+
+
   Status NewDB();
 
   // Recover the descriptor from persistent storage.  May do a significant
@@ -242,6 +246,8 @@ class DBImpl : public DB {
   // Delete any unneeded files and stale in-memory entries.
   void RemoveObsoleteFiles() EXCLUSIVE_LOCKS_REQUIRED(mutex_);
   void RemoveObsoleteFiles2() EXCLUSIVE_LOCKS_REQUIRED(metadata_mutex_);
+  void RemoveObsoleteLogFiles() EXCLUSIVE_LOCKS_REQUIRED(metadata_mutex_);
+  void RemoveCompactionInputFiles(const Compaction* c) EXCLUSIVE_LOCKS_REQUIRED(metadata_mutex_);
 
   // Compact the in-memory write buffer to disk.  Switches to a new
   // log-file/memtable and writes a new descriptor iff successful.
@@ -370,6 +376,32 @@ class DBImpl : public DB {
   // port::Mutex metadata_mutex_;
   port::Mutex metadata_mutex_{"metadata_mutex"};
   port::CondVar compaction_cv_ GUARDED_BY(metadata_mutex_);
+  int64_t l0_time=0;
+
+  std::atomic<uint64_t> wait_queue_micros_{0};
+  std::atomic<uint64_t> total_schedule_micros_{0};
+  std::atomic<uint64_t> total_wal_time_micros_{0};      // <--- 嫌疑人A的计时器
+  std::atomic<uint64_t> total_sync_time_micros_{0};     // <--- 嫌疑人B的计时器
+  std::atomic<uint64_t> total_memtable_time_micros_{0};
+  std::atomic<uint64_t> total_queue_wait_micros_{0};
+  std::atomic<uint64_t> total_makeroom_micros_{0};
+
+  // 当前后台compaction的层级。-1代表没有compaction在进行。
+  std::atomic<int> bg_compaction_level_{-1};
+
+  struct LevelStallStats {
+    // Statistics for short (1ms) slowdowns when L0 file count is high.
+    std::atomic<uint64_t> slowdown_micros{0};
+    std::atomic<uint64_t> slowdown_count{0};
+
+    // Statistics for hard stops when L0 file count or memtable count is critical.
+    std::atomic<uint64_t> stop_micros{0};
+    std::atomic<uint64_t> stop_count{0};
+  };
+  // An array to store detailed write stall statistics for each level.
+  LevelStallStats level_stall_stats_[config::kNumLevels]{};
+  // Statistics for stalls that occurred when no compaction was running.
+  LevelStallStats unknown_stall_stats_{};
 
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
   WritableFile* logfile_;

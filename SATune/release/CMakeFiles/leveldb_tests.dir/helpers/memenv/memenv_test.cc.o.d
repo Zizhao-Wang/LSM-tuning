@@ -313,6 +313,7 @@ CMakeFiles/leveldb_tests.dir/helpers/memenv/memenv_test.cc.o: \
  /usr/include/x86_64-linux-gnu/bits/mathcalls-narrow.h \
  /usr/include/x86_64-linux-gnu/bits/iscanonical.h \
  /home/jeff-wang/LSM-tuning/SATune/./db/l0_tuning.h \
+ /home/jeff-wang/LSM-tuning/SATune/./db/log_stats.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/testutil.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googlemock/include/gmock/gmock.h \
  /home/jeff-wang/LSM-tuning/SATune/third_party/googletest/googlemock/include/gmock/gmock-actions.h \

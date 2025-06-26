@@ -163,7 +163,10 @@ CMakeFiles/leveldb.dir/table/block_builder.cc.o: \
  /usr/include/c++/11/bits/shared_ptr_atomic.h \
  /usr/include/c++/11/bits/atomic_base.h \
  /usr/include/c++/11/bits/atomic_lockfree_defines.h \
- /usr/include/c++/11/backward/auto_ptr.h \
+ /usr/include/c++/11/backward/auto_ptr.h /usr/include/c++/11/map \
+ /usr/include/c++/11/bits/stl_tree.h /usr/include/c++/11/bits/stl_map.h \
+ /usr/include/c++/11/bits/stl_multimap.h \
+ /usr/include/c++/11/bits/erase_if.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/coding.h \
  /home/jeff-wang/LSM-tuning/SATune/./port/port.h \

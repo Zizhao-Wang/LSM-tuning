@@ -24,6 +24,7 @@
 #include "port/port.h"
 #include "port/thread_annotations.h"
 #include "db/db_compaction_options.h"
+#include "db/log_stats.h"
 
 namespace leveldb {
 
@@ -69,6 +70,8 @@ class Version {
   // yield the contents of this Version when merged together.
   // REQUIRES: This version has been saved (see VersionSet::SaveTo)
   void AddIterators(const ReadOptions&, std::vector<Iterator*>* iters);
+
+  uint64_t GetVersionId() const { return version_id_; }
 
   // Lookup the value for key.  If found, store it in *val and
   // return OK.  Else return a non-OK status.  Fills *stats.
@@ -119,17 +122,20 @@ class Version {
   friend class Compaction;
   friend class VersionSet;
 
+  const uint64_t version_id_;
+
   class LevelFileNumIterator;
 
-  explicit Version(VersionSet* vset)
-      : vset_(vset),
-        next_(this),
-        prev_(this),
-        refs_(0),
-        file_to_compact_(nullptr),
-        file_to_compact_level_(-1),
-        compaction_score_(-1),
-        compaction_level_(-1) {}
+  explicit Version(VersionSet* vset, uint64_t id)
+    : vset_(vset),
+    next_(this),
+    prev_(this),
+    refs_(0),
+    version_id_(id),
+    file_to_compact_(nullptr),
+    file_to_compact_level_(-1),
+    compaction_score_(-1),
+    compaction_level_(-1) {}
 
   Version(const Version&) = delete;
   Version& operator=(const Version&) = delete;
@@ -165,11 +171,14 @@ class Version {
   int compaction_level_;
 };
 
+struct LogAndApplyStats;
+
+
 class VersionSet {
  public:
   VersionSet(const std::string& dbname, const Options* options,
              TableCache* table_cache, const InternalKeyComparator*,
-             const CompactionOptionsAtomic* compaction_opts_atomic_ );
+             const CompactionOptionsAtomic* compaction_opts_atomic_, LogAndApplyStats* stats );
   VersionSet(const VersionSet&) = delete;
   VersionSet& operator=(const VersionSet&) = delete;
 
@@ -180,8 +189,10 @@ class VersionSet {
   // current version.  Will release *mu while actually writing to the file.
   // REQUIRES: *mu is held on entry.
   // REQUIRES: no other thread concurrently calls LogAndApply()
-  Status LogAndApply(VersionEdit* edit, port::Mutex* mu)
+  Status LogAndApply(VersionEdit* edit, port::Mutex* mu, CallerView caller = CallerView::kUnknown)
       EXCLUSIVE_LOCKS_REQUIRED(mu);
+
+  Status BuildAndInstallVersion(VersionEdit* edit, Version** v_out) EXCLUSIVE_LOCKS_REQUIRED(mu);
 
   // Recover the last saved descriptor from persistent storage.
   Status Recover(bool* save_manifest);
@@ -264,6 +275,11 @@ class VersionSet {
     return (v->compaction_score_ >= 1) && (v->compaction_level_ == 0);
   }
 
+  int LevelNeedsCompaction() const {
+    Version* v = current_;
+    return v->compaction_level_ == 0;
+  }
+
   // Add all files listed in any live version to *live.
   // May also mutate some internal state.
   void AddLiveFiles(std::set<uint64_t>* live);
@@ -328,8 +344,14 @@ class VersionSet {
   Env* const env_;
   const std::string dbname_;
 
+  LogAndApplyStats* const stats_;
+
   const Options* const options_;
   const CompactionOptionsAtomic*  comp_opts_atomic_;  // 指向一个不可通过它来修改的对象
+
+  // A global, unique ID for each new version to aid debugging complex
+  // concurrent scenarios.
+  std::atomic<uint64_t> next_version_id_;
 
   TableCache* const table_cache_;
   const InternalKeyComparator icmp_;

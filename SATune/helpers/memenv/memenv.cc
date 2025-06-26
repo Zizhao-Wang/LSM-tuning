@@ -209,6 +209,8 @@ class WritableFileImpl : public WritableFile {
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }
 
+  uint64_t GetFileSize() const override {return 0;}
+
  private:
   FileState* file_;
 };
@@ -230,7 +232,7 @@ class InMemoryEnv : public EnvWrapper {
 
   // Partial implementation of the Env interface.
   Status NewSequentialFile(const std::string& fname,
-                           SequentialFile** result) override {
+                           SequentialFile** result, bool use_direct_io) override {
     MutexLock lock(&mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       *result = nullptr;
@@ -242,7 +244,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status NewRandomAccessFile(const std::string& fname,
-                             RandomAccessFile** result) override {
+                             RandomAccessFile** result, bool use_direct_io) override {
     MutexLock lock(&mutex_);
     if (file_map_.find(fname) == file_map_.end()) {
       *result = nullptr;
@@ -254,7 +256,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status NewWritableFile(const std::string& fname,
-                         WritableFile** result) override {
+                         WritableFile** result, bool use_direct_io) override {
     MutexLock lock(&mutex_);
     FileSystem::iterator it = file_map_.find(fname);
 
@@ -274,7 +276,7 @@ class InMemoryEnv : public EnvWrapper {
   }
 
   Status NewAppendableFile(const std::string& fname,
-                           WritableFile** result) override {
+                           WritableFile** result, bool use_direct_io) override {
     MutexLock lock(&mutex_);
     FileState** sptr = &file_map_[fname];
     FileState* file = *sptr;
