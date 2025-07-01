@@ -1705,9 +1705,10 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
     l0compaction_stats.total_keys_out = unique_KVs_writes_after_compaction;
     l0compaction_stats.num_l0_files = compact->compaction->num_input_files(0);
     l0compaction_stats.num_l1_files_in = compact->compaction->num_input_files(1);
+    l0compaction_stats.CalculateDerivedStats();
+    l0compaction_stats.Print();
   }
-  l0compaction_stats.CalculateDerivedStats();
-  l0compaction_stats.Print();
+
 
   stats_[compact->compaction->level() + 1].Add(stats);
   level_stats_[compact->compaction->level() + 1].bytes_read += stats.bytes_read;
@@ -1723,9 +1724,13 @@ Status DBImpl::DoCompactionWork(CompactionState* compact) {
   }
   VersionSet::LevelSummaryStorage tmp;
   Log(options_.info_log, "compacted to: %s", versions_->LevelSummary(&tmp));
-  Log(options_.level_compaction_log_, "[Compaction Summary] L%d->L%d | Read: %d files (%lld bytes) | Write: %zu files (%lld bytes) | Time: %lld micros",
+  Log(options_.level_compaction_log_, 
+    "[Compaction Summary] L%d->L%d | Read: %d files (%lld bytes, %.2f MB) | Write: %zu files (%lld bytes, %.2f MB) | Time: %lld micros",
     compact->compaction->level(),compact->compaction->level() + 1,compact->compaction->num_input_files(0) + compact->compaction->num_input_files(1),
-    (long long)stats.bytes_read,compact->outputs.size(),(long long)stats.bytes_written, (long long)stats.micros);
+    (long long)stats.bytes_read,(double)stats.bytes_read / (1024.0 * 1024.0),  
+    compact->outputs.size(),(long long)stats.bytes_written,
+    (double)stats.bytes_written / (1024.0 * 1024.0), (long long)stats.micros
+  );
   return status;
 }
 

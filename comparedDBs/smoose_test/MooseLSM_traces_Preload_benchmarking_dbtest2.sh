@@ -44,7 +44,7 @@ cluster_value_size_map[30]=689
 cluster_value_size_map[35]=1796
 cluster_value_size_map[51]=221
 cluster_value_size_map[40]=155
-cluster_value_size_map[49]=10658
+cluster_value_size_map[49]=1024
 
 convert_to_billion_format() {
     local num=$1

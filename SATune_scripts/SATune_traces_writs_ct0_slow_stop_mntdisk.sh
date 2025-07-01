@@ -10,11 +10,11 @@ declare -A stop_map
 declare -A cluster_num_kvs_map
 
 cluster_num_kvs_map[13]="200000000 "
-cluster_num_kvs_map[1]="200000000 600000000 1000000000 2000000000 3000000000"
+cluster_num_kvs_map[1]="200000000 "
 cluster_num_kvs_map[25]="200000000 600000000 1000000000 2000000000 3000000000"
-cluster_num_kvs_map[30]="200000000 600000000 1000000000 2000000000 3000000000"
-cluster_num_kvs_map[35]="200000000 600000000 1000000000 2000000000 3000000000"
-cluster_num_kvs_map[51]="200000000 600000000 1000000000 2000000000 3000000000"
+cluster_num_kvs_map[30]="200000000"
+cluster_num_kvs_map[35]="2000000"
+cluster_num_kvs_map[51]="200000000"
 cluster_num_kvs_map[40]="200000000 "
 cluster_num_kvs_map[49]="20000000"
 
@@ -23,12 +23,36 @@ cluster_L1mb_map[16]="160 180 200 300 512"
 cluster_L1mb_map[8]="80 100 120 140 160 200 512"
 
 #cluster 13
-cluster_L1mb_map[2]="80 100 120 200 512"
+cluster_L1mb_map[2]="80 100 120 200 512" #100 is C0
 cluster_L1mb_map[4]="100 140 160 200 512"
 cluster_L1mb_map[8]="250 300 512"
 cluster_L1mb_map[12]="300 400 512"
 cluster_L1mb_map[16]="400 500 550 600"
 
+#cluster 30/49
+cluster_L1mb_map[2]="10 20 25 28 30 40  100 512" #30 is optimal
+cluster_L1mb_map[4]="10 20 30 40 41 100 512" #41 is optimal
+cluster_L1mb_map[8]="20 30 61 70 100 512" #61 is optimal
+cluster_L1mb_map[12]="20 30 77 82 90 100 512" #77 is optimal
+cluster_L1mb_map[16]="20 30 80 92 100 512" #92 is optimal
+
+#cluster 1
+cluster_L1mb_map[2]="1 2 4 8 100 512" #2 is optimal
+cluster_L1mb_map[4]="2 3 5 10 100 512" #3 is optimal
+cluster_L1mb_map[8]="2 3 5 10 100 512" #2.92 is optimal
+cluster_L1mb_map[12]="2 3 5 10 100 512" #3.25 is optimal
+cluster_L1mb_map[16]="2 3 5 10 100 512" #3.5 is optimal
+cluster_L1mb_map[32]="3 4 5 10 100 512" #4 is optimal
+cluster_L1mb_map[64]="4 5 10 100 512 " #5 is optimal
+
+#cluster 51
+cluster_L1mb_map[2]="5 10 14 20 50 100 512" #13.42 is optimal
+cluster_L1mb_map[4]="10 15 18 30 50 100 512" #17.94 is optimal
+cluster_L1mb_map[8]="15 20 25 30 50 100 512" # 24.67 is optimal
+cluster_L1mb_map[12]="20 30 50 100 512" #29.99 is optimal
+cluster_L1mb_map[16]="20 30 35 50 100 512" #34.51 is optimal
+cluster_L1mb_map[32]="20 30 50 100 200 512" #48.55 is optimal
+cluster_L1mb_map[64]="50 70 90 100 200 512 " #68.11 is optimal
 
 # 为不同的ct0值设定对应的slowdown和stop值
 slowdown_map[2]=8
@@ -89,7 +113,7 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 13; do
+for i in 51; do
     dir1="SATune_SATASSD_TwitterCluster${i}_PreLoadL0L1L2_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
@@ -97,7 +121,7 @@ for i in 13; do
         cd $dir1
 
             for cluster_a in "$i"; do  # 
-                for ct0 in 2 4 8 12 16; do  # 
+                for ct0 in 2 4 8 12 16 32 64; do  # 
                 for mb in ${cluster_L1mb_map[$ct0]}; do
                     echo "L1base is: $mb"
                 for buffer_size in 67108864; do
@@ -124,10 +148,10 @@ for i in 13; do
                     value_size_twitter=${cluster_value_size_map[$cluster_a]}
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                    log_file="SATune_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}_Switch${multiplier_switch}_2F${after_multiplier}.log"
+                    log_file="SATune_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_Switch${multiplier_switch}_2F${after_multiplier}.log"
                     data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                    memory_log_file="$(pwd)/SATune_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
-                    compaction_log_file="$(pwd)/Compaction_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}M_L1${mb}_CT0${ct0}_F${multiplier}_Switch${multiplier_switch}_2F${after_multiplier}.log"  
+                    memory_log_file="$(pwd)/SATune_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
+                    compaction_log_file="$(pwd)/Compaction_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}M_CT0${ct0}_L1${mb}_F${multiplier}_Switch${multiplier_switch}_2F${after_multiplier}.log"  
                     
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -202,7 +226,7 @@ for i in 13; do
                         DB_BENCH_PID=$(pgrep -af "db_bench --db=$db_dir" | grep -v 'sudo' | awk '{print $1}')
                         echo "Selected DB_BENCH_PID: $DB_BENCH_PID"
 
-                        perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.txt" &
+                        perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}.txt" &
                         PERF_PID=$!
 
                         wait $DB_BENCH_PID
