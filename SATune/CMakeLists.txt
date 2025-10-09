@@ -194,6 +194,10 @@ target_sources(leveldb
     "util/random.h"
     "util/status.cc"
     "util/trace.cc"
+    "util/performance_profile.cc"
+    "tuning_framework/workload_monitor.h"
+    "tuning_framework/auto_tuner.h"
+    "tuning_framework/auto_tuner.cc"
 
   # Only CMake 3.3+ supports PUBLIC sources in targets exported by "install".
   $<$<VERSION_GREATER:CMAKE_VERSION,3.2>:PUBLIC>
@@ -212,6 +216,7 @@ target_sources(leveldb
     "${LEVELDB_PUBLIC_INCLUDE_DIR}/table_builder.h"
     "${LEVELDB_PUBLIC_INCLUDE_DIR}/table.h"
     "${LEVELDB_PUBLIC_INCLUDE_DIR}/write_batch.h"
+    "${LEVELDB_PUBLIC_INCLUDE_DIR}/performance_profile.h"
 )
 
 
@@ -447,8 +452,8 @@ if(LEVELDB_BUILD_BENCHMARKS)
     leveldb_benchmark("benchmarks/db_bench.cc")
     # target_compile_options(db_bench PRIVATE -fsanitize=thread -g)
     # target_link_options(db_bench PRIVATE -fsanitize=thread)
-    target_compile_options(db_bench PRIVATE -fsanitize=address -g -fno-omit-frame-pointer)
-    target_link_options(db_bench PRIVATE -fsanitize=address)
+    # target_compile_options(db_bench PRIVATE -fsanitize=address -fsanitize=leak  -g -fno-omit-frame-pointer)
+    # target_link_options(db_bench PRIVATE -fsanitize=address -fsanitize=leak)
   endif(NOT BUILD_SHARED_LIBS)
 
   target_link_libraries(db_bench PRIVATE )

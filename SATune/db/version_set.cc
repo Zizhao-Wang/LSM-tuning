@@ -11,6 +11,7 @@
 #include "db/table_cache.h"
 #include <algorithm>
 #include <cstdio>
+#include <inttypes.h>
 
 #include "leveldb/env.h"
 #include "leveldb/table_builder.h"
@@ -56,7 +57,10 @@ static double MaxBytesForLevel(const CompactionOptionsAtomic* options, int level
   // 加载在“切换层级”之后使用的新乘数。
   const double new_multiplier  = options->max_bytes_for_level_multiplier_after_switch.load();
 
-  //比如，若值为3，则计算L4大小时（即从L3到L4的增长）会开始使用新的乘数。
+  // switch_level indicates the layer starting point for applying new_multiplier
+  // For example, when switch_level=3:
+  // L2: Uses old_multiplier
+  // L3, L4, L5...: All use new_multiplier
   const int switch_level = options->level_for_multiplier_switch.load();
 
   // 从L2开始，逐层计算大小
@@ -308,52 +312,46 @@ void Version::ForEachOverlapping(Slice user_key, Slice internal_key, void* arg,
   const Comparator* ucmp = vset_->icmp_.user_comparator();
 
   // Search level-0 in order from newest to oldest.
-  // fprintf(stdout, "level 0 has %lu files!\n",files_[0].size());
   std::vector<FileMetaData*> tmp;
-  tmp.reserve(files_[0].size());
-  for (uint32_t i = 0; i < files_[0].size(); i++) {
-    FileMetaData* f = files_[0][i];
-    //  fprintf(stdout, "Checking file %u: smallest = %s, largest = %s\n",
-    //         i,f->smallest.user_key().ToString().c_str(),f->largest.user_key().ToString().c_str());
-    if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 &&
-        ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
-        // fprintf(stdout, "File %u matches with user_key: %s\n Checking file %lu: smallest = %s, largest = %s\n",
-        //       i, user_key.ToString().c_str(),f->number,f->smallest.user_key().ToString().c_str(), f->largest.user_key().ToString().c_str() );
-      tmp.push_back(f);
+  {
+    LEVELDB_PROFILE_FILE_Level0METADATA_SEARCH();
+    tmp.reserve(files_[0].size());
+    for (uint32_t i = 0; i < files_[0].size(); i++) {
+      FileMetaData* f = files_[0][i];
+      if (ucmp->Compare(user_key, f->smallest.user_key()) >= 0 && ucmp->Compare(user_key, f->largest.user_key()) <= 0) {
+        tmp.push_back(f);
+      }
     }
   }
+
   if (!tmp.empty()) {
+    LEVELDB_PROFILE_LEVEL0_SEARCH();
     std::sort(tmp.begin(), tmp.end(), NewestFirst);
     for (uint32_t i = 0; i < tmp.size(); i++) {
       if (!(*func)(arg, 0, tmp[i])) {
         return;
       }
     }
-  }else{
-    // fprintf(stdout, "No File matches with user_key!\n");
   }
 
   // Search other levels.
   for (int level = 1; level < config::kNumLevels; level++) {
     size_t num_files = files_[level].size();
-    // fprintf(stdout, "level %d has %lu files!\n",level,num_files);
     if (num_files == 0) continue;
+    uint32_t index=0;
 
-    // Binary search to find earliest index whose largest key >= internal_key.
-    uint32_t index = FindFile(vset_->icmp_, files_[level], internal_key);
-    for (int i=0; i< files_[level].size();i++){
-      FileMetaData* f = files_[level][i];
-      // fprintf(stdout, "Checking file %u: smallest = %s, largest = %s\n",
-      //       i,f->smallest.user_key().ToString().c_str(),f->largest.user_key().ToString().c_str());
+    {
+      LEVELDB_PROFILE_FILE_OtherLevelMETADATA_SEARCH(); 
+      // Binary search to find earliest index whose largest key >= internal_key.
+      index = FindFile(vset_->icmp_, files_[level], internal_key);
     }
      
     if (index < num_files) {
+      LEVELDB_PROFILE_LEVEL_SEARCH(level);
       FileMetaData* f = files_[level][index];
       if (ucmp->Compare(user_key, f->smallest.user_key()) < 0) {
         // All of "f" is past any data for user_key
       } else {
-        // fprintf(stdout, "File %u matches with user_key: %s\n Checking file %lu: smallest = %s, largest = %s\n",
-        //       index, user_key.ToString().c_str(),f->number,f->smallest.user_key().ToString().c_str(), f->largest.user_key().ToString().c_str() );
         if (!(*func)(arg, level, f)) {
           return;
         }
@@ -415,9 +413,15 @@ Status Version::Get(const ReadOptions& options, const LookupKey& k,
       state->last_file_read = f;
       state->last_file_read_level = level;
 
-      state->s = state->vset->table_cache_->Get(*state->options, f->number,
-                                                f->file_size, level, state->ikey,
-                                                &state->saver, SaveValue);
+      if (level == 0) {
+        state->s = state->vset->table_cache_->Get0(*state->options, f->number,
+          f->file_size, level, state->ikey,&state->saver, SaveValue);
+      }
+      else{
+        state->s = state->vset->table_cache_->Get(*state->options, f->number,
+          f->file_size, level, state->ikey,&state->saver, SaveValue);
+      }
+      
       if (!state->s.ok()) {
         state->found = true;
         return false;
@@ -1244,6 +1248,34 @@ void VersionSet::Finalize(Version* v) {
 
   v->compaction_level_ = best_level;
   v->compaction_score_ = best_score;
+
+  // fprintf(stderr, "\n=== Compaction Score Summary ===\n");
+  // for (int level = 0; level < config::kNumLevels - 1; level++) {
+  //   if (level == 0) {
+  //     int file_count = v->files_[level].size();
+  //     int trigger = comp_opts_atomic_->level0_compaction_trigger.load();
+  //     double score = file_count / static_cast<double>(trigger);
+  //     fprintf(stderr, "Level %d: %d files (trigger: %d), Score: %.4f\n", level, file_count, trigger, score);
+  //   } else {
+  //     const uint64_t level_bytes = TotalFileSize(v->files_[level]);
+  //     uint64_t limit = MaxBytesForLevel(comp_opts_atomic_, level);
+  //     double score = static_cast<double>(level_bytes) / limit;
+  //     if (level_bytes > 0 || v->files_[level].size() > 0) {
+  //       fprintf(stderr, "Level %d: %.2f MB (limit: %.2f MB), Score: %.4f\n", level, level_bytes / 1048576.0, limit / 1048576.0, score);
+  //     }
+  //   }
+  // }
+  // fprintf(stderr, "Best Compaction: Level %d, Score: %.4f\n", best_level, best_score);
+  // fprintf(stderr, "================================\n\n"); 
+}
+
+void VersionSet::RefinalizeCurrentVersion() {
+  // 对当前版本重新执行 Finalize
+  Finalize(current_);
+    
+  // 可以添加日志记录
+  // Log(info_log_, "Refinalized current version after tuning: best_level=%d, best_score=%.2f",
+  //     current_->compaction_level_, current_->compaction_score_);
 }
 
 Status VersionSet::WriteSnapshot(log::Writer* log) {

@@ -79,19 +79,24 @@ struct LEVELDB_EXPORT Options {
   // ---- START: NEWLY ADDED ----
   // A dedicated logger for verbose version debugging.
   Logger* version_debug_log_ = nullptr;
-  // ---- END: NEWLY ADDED ----
 
   
   // The info log will be written to a file with this name.
   // Default: empty (no info log is created).
   Logger* level_compaction_log_ = nullptr;
   // =================================================================
-  //                  在此处添加以下成员
-  // =================================================================
-  // If non-empty, a separate log file for compaction statistics will be
+  // If non-empty, a log file for compaction statistics will be
   // created with this name. The file will be stored in the database directory.
   // Default: empty (compaction stats are written to level_compaction_log_ if it exists).
   std::string level_compaction_log_filename;
+  // =================================================================
+ 
+  
+  // =================================================================
+  Logger* tuning_log_ = nullptr;
+  // If empty, uses default "dbname/TUNING_LOG"
+  // If set, uses "custom_tuning_log_dir/TUNING_LOG"
+  std::string custom_tuning_log_dir;
   // =================================================================
 
   // -------------------
@@ -163,7 +168,7 @@ struct LEVELDB_EXPORT Options {
   bool use_direct_writeappend_file = false;
 
 
-  bool merge_versions_on_flush = false;
+  bool merge_versions_on_flush = true;
 
   // Number of keys between restart points for delta encoding of keys.
   // This parameter can be changed dynamically.  Most clients should

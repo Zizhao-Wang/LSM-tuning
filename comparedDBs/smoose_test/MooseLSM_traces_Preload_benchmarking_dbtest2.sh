@@ -41,7 +41,7 @@ cluster_value_size_map[1]=267
 cluster_value_size_map[13]=4266
 cluster_value_size_map[25]=28
 cluster_value_size_map[30]=689
-cluster_value_size_map[35]=1796
+cluster_value_size_map[35]=1000
 cluster_value_size_map[51]=221
 cluster_value_size_map[40]=155
 cluster_value_size_map[49]=1024
@@ -62,7 +62,9 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 40 49 1 30 35 51 ; do
+READ_RATIOS=(0.0 0.1 0.5 0.9 1.0)
+
+for i in 35 ; do
     dir1="10B_RocksDB_SATASSD_TwitterCluster${i}_PreLoad_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
@@ -79,8 +81,8 @@ for i in 40 49 1 30 35 51 ; do
                 for blk_size in 1 ; do
                 for blk_cache_size in 32 ; do
                 for table_cache_size in 300 ; do
-                    # buffer_size=67108864
-                    # buffer_size=2097152
+                for read_ratio in "${READ_RATIOS[@]}"; do
+                    write_ratio=$(echo "1.0 - $read_ratio" | bc)
                     target_file_base=67108864
                     level1_max_bytes=$(($mb * 1048576))
                     buffer_size_mb=$((buffer_size / 1048576))
@@ -90,7 +92,7 @@ for i in 40 49 1 30 35 51 ; do
                     value_size_twitter=${cluster_value_size_map[$cluster_a]}
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                    log_file="Smoose_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
+                    log_file="Smoose_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_read_${read_ratio}_write_${write_ratio}.log"
                     data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
                     memory_log_file="$(pwd)/Smoose_PreLoadMemory_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
@@ -101,7 +103,7 @@ for i in 40 49 1 30 35 51 ; do
                     fi
 
                     # 创建相应的目录
-                    db_dir="/mnt/db_test2/MooseLSM/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                    db_dir="/mnt/db_test2/MooseLSM/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}_mixed_read_${read_ratio}_write_${write_ratio}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -123,15 +125,18 @@ for i in 40 49 1 30 35 51 ; do
                     echo "$num_format"
                             
                     ../build/smoose_tester \
+                        --workload=mixed \
                         --db=$db_dir \
+                        --data_file_path=$data_file \
                         --num=$num_kvs \
                         --key_size=$key_size_twitter \
                         --value_size=$value_size_twitter \
-                        --data_file_path=$data_file  \
-                        --entries_per_batch=1 \
-                        --bits_per_key=5 \
+                        --read_ratio=$read_ratio \
+                        --write_ratio=$write_ratio \
+                        --verify_reads=false \
+                        --bits_per_key=10 \
                         --stats_interval_ops="$stats_interva" \
-                        &> >( tee $log_file) &  
+                        &> >(tee $log_file) &
 
                         # 保存 db_bench 的 PID 供监控使用
                         sleep 1
@@ -165,7 +170,7 @@ for i in 40 49 1 30 35 51 ; do
                         # else
                         #     echo "perf stat process $PERF_PID is no longer running (it might have ended with db_bench)."
                         # fi
-    
+                    done
                     done
                     done
                     done

@@ -9,7 +9,7 @@ percentages=(1 5 10 15 20 25 30) # 定义百分比值
 range_dividers=(1)
 DEVICE_NAME="sdd"
 F=8
-level1base=500
+level1base=512
 
 convert_to_billion_format() {
     local num=$1
@@ -29,7 +29,7 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_leveldb_tuning_structure(f_c0)_experiments_C0${level1base}"
+    dir1="${i}B_leveldb_tuning_structure(f_c0)_experiments_C0${level1base}wa_throughput"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -37,19 +37,19 @@ for i in {10..10}; do
         for value_size in 128; do
             num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
             num_entries=1000000000
-            stats_interva=$((num_entries / 10))
+            stats_interva=$((num_entries / 100))
 
             num_format=$(convert_to_billion_format $num_entries)
 
-            for zipf_a in 1.1 1.2 1.3 1.4 1.5; do  #  1.2 
+            for zipf_a in 1.2 ; do  #  1.2 
                 for buffer_size in 67108864; do
                     buffer_size_mb=$((buffer_size / 1048576))
 
-                    for F in 16 32; do
+                    for F in 10; do
 
                         log_file="leveldb_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_zipf${zipf_a}_factor${F}_level1base${level1base}MiB.log"
                         data_file="/mnt/workloads/zipf${zipf_a}_keys10.0B.csv" # 构建数据文件路径
-                        memory_log_file="/home/jeff-wang/LSM-tuning/comparedDBs/performance_test_scripts/leveldb_experiment/10B_leveldb_tuning_structure(f_c0)_experiments_C0${level1base}/leveldb_zipf${zipf_a}_f${F}_memory_usage_${num_format}_key16_val${value_size}_mem${buffer_size_mb}MiB_factor${F}_level1base${level1base}MiB.log"  
+                        memory_log_file="$(pwd)/leveldb_zipf${zipf_a}_f${F}_memory_usage_${num_format}_key16_val${value_size}_mem${buffer_size_mb}MiB_factor${F}_level1base${level1base}MiB.log"  
 
                         # 如果日志文件存在，则跳过当前迭代
                         if [ -f "$log_file" ]; then

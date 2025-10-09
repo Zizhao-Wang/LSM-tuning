@@ -38,6 +38,8 @@
 #include <optional>
 #include <queue>
 #include <thread>
+#include <chrono>
+#include <random>
 #include <unordered_map>
 
 #include "db/db_impl/db_impl.h"
@@ -288,6 +290,11 @@ DEFINE_int64(deletes, -1,
              "If negative, do FLAGS_num deletions.");
 
 DEFINE_int32(bloom_locality, 0, "Control bloom filter probes locality");
+
+// 首先添加新的 gflags
+DEFINE_double(read_ratio, 0.5, "Read ratio (0.0 to 1.0)");
+DEFINE_double(write_ratio, 0.5, "Write ratio (0.0 to 1.0)");
+DEFINE_bool(verify_reads, false, "Verify read values against expected values");
 
 DEFINE_int64(seed, 0,
              "Seed base for random number generators. "
@@ -3675,7 +3682,10 @@ class Benchmark {
         method = &Benchmark::WriteZipf;
       } else if (name == "fillcluster") {
         fresh_db = true;
-        method = &Benchmark::WriteCluster;
+        method = &Benchmark::WriteCluster; 
+      } else if (name == "fillmixworkload") {
+        fresh_db = true;
+        method = &Benchmark::WritemixWorkload;
       } else if (name == "clusterQuery") {
         method = &Benchmark::Cluster_benchmarking;
       } else if (name == Slice("ycsba")) {
@@ -5196,6 +5206,11 @@ class Benchmark {
     DoWrite_cluster(thread, RANDOM); 
   }
 
+  void WritemixWorkload(ThreadState* thread) { 
+    DoWrite_mixWorkload(thread, RANDOM); 
+  }
+  
+
   void Cluster_benchmarking(ThreadState* thread) { 
     Do_cluster_benchmarking(thread, RANDOM); 
   }
@@ -5357,9 +5372,72 @@ class Benchmark {
     thread->stats.AddBytes(bytes);
   }
 
+
+  // 预加载函数 - 在benchmark开始前调用一次
+  bool PreloadWorkloadData(std::vector<uint64_t>& workload_keys, std::vector<int>& workload_operations) {
+    fprintf(stderr, "Starting to preload workload from: %s\n", FLAGS_data_file_path.c_str());
+    
+    std::ifstream csv_file(FLAGS_data_file_path);
+    if (!csv_file.is_open()) {
+      fprintf(stderr, "Unable to open file: %s\n", FLAGS_data_file_path.c_str());
+      return false;
+    }
+    
+    std::string line;
+    std::getline(csv_file, line); // 跳过标题行
+    
+    // 预分配空间
+    workload_keys.reserve(FLAGS_workload_num);
+    workload_operations.reserve(FLAGS_workload_num);
+    
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+    int64_t loaded_count = 0;
+    
+    while (std::getline(csv_file, line) && loaded_count < FLAGS_workload_num+10) {
+      line_stream.clear();
+      line_stream.str("");
+      row_data.clear();
+      
+      line_stream << line;
+      while (getline(line_stream, cell, ',')) {
+        row_data.push_back(cell);
+      }
+      
+      if (row_data.size() != 7) {
+        fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
+        continue;
+      }
+      
+      // 解析操作类型
+      int op_type = -1;
+      if (row_data[5] == "get" || row_data[5] == "gets") {
+        op_type = 0; // GET
+      } else if (row_data[5] == "add" || row_data[5] == "set") {
+        op_type = 1; // SET
+      } else if (row_data[5] == "cas") {
+        op_type = 2; // CAS
+      }
+      
+      if (op_type >= 0) {
+        uint64_t key_id = std::stoull(row_data[1]);
+        workload_keys.push_back(key_id);
+        workload_operations.push_back(op_type);
+        loaded_count++;
+      }
+    }
+    
+    csv_file.close();
+    fprintf(stderr, "Successfully preloaded %ld operations\n", loaded_count);
+    return true;
+  }
+
+
   void DoWrite_cluster(ThreadState* thread, WriteMode write_mode) {
     uint64_t num_written = 0;
     std::string get_value;
+
 
     if (num_ != FLAGS_num) {
       char msg[100];
@@ -5375,7 +5453,14 @@ class Benchmark {
     int64_t bytes = 0;
     int id = 0;
 
-      // 打开 CSV 文件
+    std::vector<uint64_t> workload_keys;      // 存储key值
+    std::vector<int> workload_operations;     // 存储操作类型：0=get, 1=set, 2=cas
+    if (!PreloadWorkloadData(workload_keys, workload_operations)) {
+      fprintf(stderr, "Failed to load workload data\n");
+      return ;
+    }
+
+    // 打开 CSV 文件
     std::ifstream csv_file(FLAGS_data_file_path);
     std::string line;
     if (!csv_file.is_open()) {
@@ -5454,10 +5539,182 @@ class Benchmark {
     thread->stats.AddBytes(bytes);
   }
 
+  void DoWrite_mixWorkload(ThreadState* thread, WriteMode write_mode) {
+    if (FLAGS_data_file_path.empty()) {
+      fprintf(stderr, "Error: You must specify --data_file_path\n");
+      return;
+    }
+
+    std::ifstream csv_file(FLAGS_data_file_path);
+    if (!csv_file.is_open()) {
+      fprintf(stderr, "Error: Unable to open file: %s\n", FLAGS_data_file_path.c_str());
+      return;
+    }
+
+    // 首先加载所有的 keys 到内存中
+    std::vector<uint64_t> keys;
+    std::string line;
+    std::getline(csv_file, line); // 跳过标题行
+
+    fprintf(stderr, "Loading keys from CSV file...\n");
+    for (int64_t i = 0; i < FLAGS_num+1000 && std::getline(csv_file, line); ++i) {
+      std::stringstream line_stream(line);
+      std::string cell;
+      std::vector<std::string> row_data;
+      
+      while (getline(line_stream, cell, ',')) {
+        row_data.push_back(cell);
+      }
+
+      if (row_data.size() >= 2) {
+        keys.push_back(std::stoull(row_data[1]));
+      }
+    }
+    csv_file.close();
+
+    if (keys.empty()) {
+      fprintf(stderr, "Error: No valid keys found in CSV file\n");
+      return;
+    }
+
+    fprintf(stderr, "Loaded %zu keys from CSV file\n", keys.size());
+
+    // 计算读写操作数量
+    const int64_t total_ops = FLAGS_num;
+    const int64_t read_ops = static_cast<int64_t>(total_ops * FLAGS_read_ratio);
+    const int64_t write_ops = static_cast<int64_t>(total_ops * FLAGS_write_ratio);
+
+    fprintf(stderr, "\n--- Mixed Workload Configuration ---\n");
+    fprintf(stderr, "Total operations:  %ld\n", total_ops);
+    fprintf(stderr, "Read operations:   %ld (%.1f%%)\n", read_ops, FLAGS_read_ratio * 100);
+    fprintf(stderr, "Write operations:  %ld (%.1f%%)\n", write_ops, FLAGS_write_ratio * 100);
+    fprintf(stderr, "Key size:          %d\n", FLAGS_key_size);
+    fprintf(stderr, "Value size:        %d\n", FLAGS_value_size_);
+    fprintf(stderr, "------------------------------------\n\n");
+
+    // 随机数生成器
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<size_t> key_dist(0, keys.size() - 1);
+    std::uniform_real_distribution<double> op_dist(0.0, 1.0);
+
+    // 统计变量
+    int64_t num_reads = 0;
+    int64_t num_writes = 0;
+    int64_t num_found = 0;
+    int64_t num_not_found = 0;
+    int64_t num_read_errors = 0;
+    int64_t num_write_errors = 0;
+
+    rocksdb::WriteOptions write_options;
+    rocksdb::ReadOptions read_options;
+
+    auto start_time = std::chrono::high_resolution_clock::now();
+    // auto last_report_time = start_time;
+    int64_t ops_at_last_report = 0;
+
+    // 用于分别计算读写性能
+    // auto read_start_time = std::chrono::high_resolution_clock::now();
+    // auto write_start_time = std::chrono::high_resolution_clock::now();
+    double total_read_time = 0.0;
+    double total_write_time = 0.0;
+
+    // 执行混合工作负载
+    for (int64_t i = 0; i < total_ops; i++) {
+      // 随机选择一个 key
+      size_t key_idx = key_dist(gen);
+      uint64_t key_num = keys[key_idx];
+      
+      // 格式化 key
+      char key_buffer[100];
+      snprintf(key_buffer, sizeof(key_buffer), "%0*llu", FLAGS_key_size, (unsigned long long)key_num);
+
+      // 根据读写比例决定操作类型
+      bool is_read = (op_dist(gen) < FLAGS_read_ratio);
+
+      if (is_read) {
+        // 执行读操作
+        // auto read_op_start = std::chrono::high_resolution_clock::now();
+        std::string value;
+        rocksdb::Status s = db_.db->Get(read_options, key_buffer, &value);
+        // auto read_op_end = std::chrono::high_resolution_clock::now();
+        // total_read_time += std::chrono::duration<double>(read_op_end - read_op_start).count();
+        
+        if (s.ok()) {
+          num_found++;
+          
+          // 如果启用了验证，检查值是否正确
+          if (FLAGS_verify_reads) {
+            std::string expected_value(FLAGS_value_size_, 'a');
+            if (value != expected_value) {
+              fprintf(stderr, "Warning: Value mismatch for key %s\n", key_buffer);
+            }
+          }
+        } else if (s.IsNotFound()) {
+          num_not_found++;
+        } else {
+          num_read_errors++;
+          fprintf(stderr, "Read error for key %s: %s\n", key_buffer, s.ToString().c_str());
+        }
+        thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
+        num_reads++;
+      } else {
+        // 执行写操作
+        // auto write_op_start = std::chrono::high_resolution_clock::now();
+        std::string value(FLAGS_value_size_, 'a');
+        rocksdb::Status s = db_.db->Put(write_options, key_buffer, value);
+        // auto write_op_end = std::chrono::high_resolution_clock::now();
+        // total_write_time += std::chrono::duration<double>(write_op_end - write_op_start).count();
+        
+        if (!s.ok()) {
+          num_write_errors++;
+          fprintf(stderr, "Write error for key %s: %s\n", key_buffer, s.ToString().c_str());
+        }
+        
+        num_writes++;
+        thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
+      }
+    }
+
+    auto end_time = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> duration = end_time - start_time;
+
+    // 打印最终统计信息
+    fprintf(stdout, "\n--- Mixed Workload Summary ---\n");
+    fprintf(stdout, "Total operations:     %ld\n", total_ops);
+    fprintf(stdout, "Read operations:      %ld (%.1f%%)\n", 
+            num_reads, (num_reads * 100.0) / total_ops);
+    fprintf(stdout, "Write operations:     %ld (%.1f%%)\n", 
+            num_writes, (num_writes * 100.0) / total_ops);
+    fprintf(stdout, "\nRead Results:\n");
+    fprintf(stdout, "  Keys found:         %ld (%.1f%%)\n", 
+            num_found, (num_found * 100.0) / std::max(num_reads, 1L));
+    fprintf(stdout, "  Keys not found:     %ld (%.1f%%)\n", 
+            num_not_found, (num_not_found * 100.0) / std::max(num_reads, 1L));
+    fprintf(stdout, "  Read errors:        %ld\n", num_read_errors);
+    fprintf(stdout, "\nWrite Results:\n");
+    fprintf(stdout, "  Write errors:       %ld\n", num_write_errors);
+    fprintf(stdout, "\nPerformance:\n");
+    fprintf(stdout, "  Total time:         %.2f seconds\n", duration.count());
+    fprintf(stdout, "  Total throughput:   %.2f ops/sec\n", total_ops / duration.count());
+    fprintf(stdout, "  Read performance:\n");
+    if (num_reads > 0) {
+      fprintf(stdout, "    - Read throughput:    %.2f ops/sec\n", num_reads / total_read_time);
+      fprintf(stdout, "    - Avg read latency:   %.2f us\n", (total_read_time / num_reads) * 1000000);
+    }
+    fprintf(stdout, "  Write performance:\n");
+    if (num_writes > 0) {
+      fprintf(stdout, "    - Write throughput:   %.2f ops/sec\n", num_writes / total_write_time);
+      fprintf(stdout, "    - Avg write latency:  %.2f us\n", (total_write_time / num_writes) * 1000000);
+    }
+    fprintf(stdout, "------------------------------\n");
+
+  }
+
   void Do_cluster_benchmarking(ThreadState* thread, WriteMode write_mode) {
     uint64_t num_written = 0;
     std::string get_value;
-    uint64_t found;
+    uint64_t found=0;
     ReadOptions roptions;
 
     if (num_ != FLAGS_num) {
@@ -5477,17 +5734,12 @@ class Benchmark {
     int64_t bytes = 0;
     int id = 0;
 
-    // 打开 CSV 文件
-    std::ifstream csv_file(FLAGS_data_file_path);
-    std::string line;
-    if (!csv_file.is_open()) {
-      fprintf(stderr, "Unable to open file: %s in Do_cluster_benchmarking\n", FLAGS_data_file_path.c_str());
-      return;
+    std::vector<uint64_t> workload_keys;      // 存储key值
+    std::vector<int> workload_operations;     // 存储操作类型：0=get, 1=set, 2=cas
+    if (!PreloadWorkloadData(workload_keys, workload_operations)) {
+      fprintf(stderr, "Failed to load workload data\n");
+      return ;
     }
-    std::getline(csv_file, line); // 读取并丢弃 CSV 文件的标题行
-    std::stringstream line_stream;
-    std::string cell;
-    std::vector<std::string> row_data;
 
     fprintf(stderr, "workload_num: %ld entries_per_batch_:%ld\n The key size:%d value size:%d \n", 
       FLAGS_workload_num, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
@@ -5495,39 +5747,25 @@ class Benchmark {
     const int32_t k_size=FLAGS_key_size;
     const int32_t v_size=FLAGS_value_size_;
     fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+    thread->stats.ResetLastOpTime();
 
     for (int64_t i = 0; i < FLAGS_workload_num; i += 1) {
       batch.Clear();
       int64_t batch_bytes = 0;
-
       int64_t rand_num = 0;
-      line_stream.clear();
-      line_stream.str("");
-      row_data.clear();
 
-      if (!std::getline(csv_file, line)) { 
-        fprintf(stderr, "Error reading key from file\n");
-        return;
+      int op_type = workload_operations[i];
+
+      if (i <= 10) {
+        const char* op_name = (op_type == 0) ? "get" : 
+        (op_type == 1) ? "set" : (op_type == 2) ? "cas" : "unknown";
+        fprintf(stdout, "Operation %zu: %s\n", i, op_name);
       }
 
-      line_stream << line;
-      while (getline(line_stream, cell, ',')) {
-        row_data.push_back(cell);
-      }
-
-      if (row_data.size() != 7) {
-        fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
-        continue;
-      }
-
-      if(i<=10){
-        fprintf(stdout,"the row_data[5] is:%s\n",row_data[5].c_str());
-      }
-
-      if (row_data[5]=="get"||row_data[5]=="gets"){
+      if (op_type == 0){ // GET
         char formatget[20];
         char key1[100];
-        const uint64_t k = std::stoull(row_data[1]);
+        const uint64_t k = workload_keys[i];
         std::snprintf(formatget, sizeof(formatget), "%%0%dllu", k_size);
         std::snprintf(key1, sizeof(key1), formatget, (unsigned long long)k);
         Slice readkey(key1);
@@ -5539,10 +5777,10 @@ class Benchmark {
         bytesget = (16 + FLAGS_value_size);
         thread->stats.AddBytes(bytesget);
         thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
-      }else if(row_data[5]=="add"||row_data[5]=="set"){
+      }else if(op_type == 1){
         char formatadd[20];
         char key2[100];
-        const uint64_t k = std::stoull(row_data[1]);
+        const uint64_t k = workload_keys[i];
         std::snprintf(formatadd, sizeof(formatadd), "%%0%dllu", k_size);
         std::snprintf(key2, sizeof(key2), formatadd, (unsigned long long)k);
         Slice val = gen.Generate(FLAGS_value_size_);
@@ -5557,10 +5795,10 @@ class Benchmark {
           fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
           ErrorExit();
         } 
-      }else if(row_data[5]=="cas"){
+      }else if(op_type == 2){
         char formatcas[20];
         char key1[100];
-        const uint64_t k = std::stoull(row_data[1]);
+        const uint64_t k = workload_keys[i];
         std::snprintf(formatcas, sizeof(formatcas), "%%0%dllu", k_size);
         std::snprintf(key1, sizeof(key1), formatcas, (unsigned long long)k);
         Slice readkey(key1);
@@ -5572,7 +5810,7 @@ class Benchmark {
         if (sta2.ok()) {
           char format3[20];
           char key3[100];
-          const uint64_t cask = std::stoull(row_data[1]);
+          const uint64_t cask = workload_keys[i];
           std::snprintf(format3, sizeof(format3), "%%0%dllu", k_size);
           std::snprintf(key3, sizeof(key3), format3, (unsigned long long)cask);
           Slice val3 = gen.Generate(FLAGS_value_size_);
@@ -5588,6 +5826,7 @@ class Benchmark {
 
       }
     }
+    fprintf(stderr, "found %lu keys during found process\n", found); // 输出总写入字节数
     thread->stats.print_mem_usage();
     thread->stats.printf_mem(db_.db);
     fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数

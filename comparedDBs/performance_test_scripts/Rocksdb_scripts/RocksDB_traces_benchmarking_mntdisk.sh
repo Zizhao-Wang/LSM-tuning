@@ -37,6 +37,8 @@ declare -A param_map=(
   ["25_1000000000_1000"]="5"
   ["25_1000000000_5000"]="8"
   ["25_1000000000_10000"]="10"
+
+  ["40_200000000_1000"]="10"
 )
 
 
@@ -67,6 +69,7 @@ cluster_key_size_map[13]=44
 cluster_key_size_map[25]=49
 cluster_key_size_map[30]=22
 cluster_key_size_map[35]=19
+cluster_key_size_map[40]=44
 cluster_key_size_map[51]=44	
 
 cluster_value_size_map[1]=267
@@ -74,6 +77,7 @@ cluster_value_size_map[13]=4266
 cluster_value_size_map[25]=28
 cluster_value_size_map[30]=689
 cluster_value_size_map[35]=1796
+cluster_value_size_map[40]=155
 cluster_value_size_map[51]=221
 
 
@@ -95,33 +99,26 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_SATASSD_TwitterCluster25_Benchmarking"
+    dir1="Autotuning_RocksDB_SATASSD_TwitterCluster40_Benchmarking"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
         for value_size in 128; do
-            num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
-            stats_interva=$((num_entries / 100))
-            num_entries=1000000000
-
-            for cluster_a in 25; do  # 
+            for cluster_a in 40; do  # 
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
-                for num_kvs2 in 200000000 400000000 600000000 800000000 1000000000; do
+                for num_kvs2 in 200000 ; do
                 num_format3=$(convert_to_billion_format "$num_kvs2")
-                    for workload_kvs in 100000000 ; do #200000000 300000000 400000000 500000000
+                    for workload_kvs in 200000000 ; do #200000000 300000000 400000000 500000000
+                    stats_interva=$((workload_kvs / 5))
                     num_format2=$(convert_to_billion_format "$workload_kvs")
                     echo "原始值: $workload_kvs, 转换后: $num_format2"
-                    for blk_size in 1 4 8 10 16 32; do
-                    for blk_cache_size in 32 128 512 1024; do
-                    for table_cache_size in 300 1000 5000 10000; do
+                    for blk_size in 4; do
+                    for blk_cache_size in 128; do
+                    for table_cache_size in 1000; do
                         key="${cluster_a}_${num_kvs2}_${table_cache_size}"
-                        mapped_table_cache=${param_map[$key]:-}
-                        # 打印组合 Key 和查到的映射
-                        printf "[DEBUG] table_cache_size=%s, combined key='%s', mapped value='%s'\n" \
-                            "$table_cache_size" "$key" "$mapped_table_cache"
                         # buffer_size=67108864
                         # buffer_size=2097152
                         target_file_base=67108864
@@ -134,9 +131,9 @@ for i in {10..10}; do
                         value_size_twitter=${cluster_value_size_map[$cluster_a]}
                         key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                        log_file="RocksDB_${num_format2}_in${num_format3}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Blk${blk_size}_Blkcache${blk_cache_size}_Tabcache${mapped_table_cache}.log"
+                        log_file="RocksDB_${num_format2}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Blk${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
                         data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                        memory_log_file="$(pwd)/RocksDB_BenchMarking_${num_format2}in${num_format3}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${mapped_table_cache}.log"      
+                        memory_log_file="$(pwd)/RocksDB_BenchMarking_${num_format2}in${num_format3}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                         # 如果日志文件存在，则跳过当前迭代
                         if [ -f "$log_file" ]; then
@@ -146,6 +143,14 @@ for i in {10..10}; do
 
                         # 创建相应的目录
                         db_dir="/mntdisk/rocks10B/PreLoad_Cluster${cluster_a}_${num_format3}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                        # 检查目录是否为空，如果不为空则删除所有内容
+                        if [ "$(ls -A $db_dir)" ]; then
+                            rm -rf "${db_dir:?}/"*
+                        fi
+
+                        if [ ! -d "$db_dir" ]; then
+                            mkdir -p "$db_dir"
+                        fi
 
                         # 获取对应ct0的slowdown和stop值
                         slowdown_value=${slowdown_map[$ct0]}
@@ -154,7 +159,7 @@ for i in {10..10}; do
                         echo "For ct0=$ct0, slowdown_value=$slowdown_value, stop_value=$stop_value"
 
                         echo "base_num: $base_num"
-                        echo "num_entries: $num_entries"
+                        echo "num_entries: $workload_kvs"
                         echo "value_size:$value_size_twitter"
                         echo "key_size:$key_size_twitter"
                         echo "stats_interval: $stats_interva"
@@ -167,8 +172,7 @@ for i in {10..10}; do
                             --num=$num_kvs2 \
                             --workload_num=$workload_kvs \
                             --block_size=$block_size_write2  \
-                            --perf_level=5   \
-                            --statistics=true \
+                            --statistics=false \
                             --use_direct_reads=true \
                             --key_size=$key_size_twitter \
                             --value_size_=$value_size_twitter \
@@ -181,27 +185,29 @@ for i in {10..10}; do
                             --level0_file_num_compaction_trigger=$ct0 \
                             --level0_slowdown_writes_trigger=$slowdown_value \
                             --level0_stop_writes_trigger=$stop_value \
-                            --max_background_compactions=8 \
+                            --max_background_compactions=1 \
                             --max_background_flushes=1 \
-                            --open_files=$mapped_table_cache \
+                            --open_files=$table_cache_size \
                             --compression_ratio=0 \
                             --stats_interval=$stats_interva \
                             --stats_per_interval=$stats_interva \
                             --histogram=1 \
-                            --use_existing_db=true \
+                            --use_existing_db=false \
                             --write_buffer_size=$buffer_size \
                             --mem_log_file=$memory_log_file \
+                            --sync=true \
                             --target_file_size_base=$target_file_base   \
                             --compression_type=none \
                             &> >( tee $log_file) &  
 
                             # 保存 db_bench 的 PID 供监控使用
-                            sleep 1
+                            sleep 3
 
                             DB_BENCH_PID=$(pgrep -af "db_bench --db=$db_dir" | grep -v 'sudo' | awk '{print $1}')
                             echo "Selected DB_BENCH_PID: $DB_BENCH_PID"
 
-                            perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format2}in${num_format3}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${mapped_table_cache}.txt" &
+                            # perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format2}in${num_format3}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.txt" &
+                            perf record -F 999 -p $DB_BENCH_PID -g -e cycles:u,instructions:u -o "perf_rocksdb.data"  &
                             PERF_PID=$!
 
                             wait $DB_BENCH_PID

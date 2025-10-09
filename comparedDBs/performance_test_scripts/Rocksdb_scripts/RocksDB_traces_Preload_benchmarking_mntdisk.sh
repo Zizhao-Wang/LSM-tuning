@@ -12,16 +12,19 @@ declare -A stop_map
 
 # 为不同的ct0值设定对应的slowdown和stop值
 slowdown_map[4]=16
-slowdown_map[8]=16
-slowdown_map[16]=20
+slowdown_map[8]=24
+slowdown_map[16]=32
 slowdown_map[32]=40
 slowdown_map[64]=80
+slowdown_map[8000]=16000
+
 
 stop_map[4]=32
-stop_map[8]=32
-stop_map[16]=32
+stop_map[8]=40
+stop_map[16]=64
 stop_map[32]=74
 stop_map[64]=144
+stop_map[8000]=32000
 
 # Define the mapping for value_size and key_size for each cluster
 declare -A cluster_value_size_map
@@ -39,7 +42,7 @@ cluster_value_size_map[1]=267
 cluster_value_size_map[13]=4266
 cluster_value_size_map[25]=28
 cluster_value_size_map[30]=689
-cluster_value_size_map[35]=1796
+cluster_value_size_map[35]=1000
 cluster_value_size_map[51]=221
 
 
@@ -59,42 +62,39 @@ convert_to_billion_format() {
     fi
 }
 
-for i in {10..10}; do
-    base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_Twitter_PreLoad_Performance"
-    if [ ! -d "$dir1" ]; then
-        mkdir $dir1
-    fi
-        cd $dir1
-        for value_size in 128; do
-            num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
-            stats_interva=$((num_entries / 100))
-            num_entries=1000000000
 
-            for cluster_a in 25; do  # 
-                for ct0 in 4 ; do  # 
-                for mb in 512; do
-                for buffer_size in 67108864; do
-                for num_kvs in 200000000 400000000 600000000 800000000 1000000000; do
-                    num_format=$(convert_to_billion_format "$num_kvs")
-                    echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 4 8 10 16 32; do
-                for blk_cache_size in 32 128 512 1024; do
-                for table_cache_size in 300 1000 5000 10000; do
-                    # buffer_size=67108864
-                    # buffer_size=2097152
-                    target_file_base=67108864
-                    level1_max_bytes=$(($mb * 1048576))
-                    buffer_size_mb=$((buffer_size / 1048576))
-                    target_file_base_mb=$((target_file_base / 1048576))
-                    block_size_write=$(($blk_size * 1024))
+dir1="RocksDB_Twitter_Clusters_parameterTest"
+if [ ! -d "$dir1" ]; then
+    mkdir $dir1
+fi
+    cd $dir1
+    num_entries=10000000
+    stats_interva=$((num_entries / 100))
 
-                    value_size_twitter=${cluster_value_size_map[$cluster_a]}
-                    key_size_twitter=${cluster_key_size_map[$cluster_a]}
+    for cluster_a in 13 35 30 25 1; do 
+    for ct0 in 8000; do  # 
+    for mb in 512000; do
+    for buffer_size in 67108864; do
+    for num_kvs in 20000000 ; do
+        num_format=$(convert_to_billion_format "$num_kvs")
+        echo "原始值: $num_kvs, 转换后: $num_format"
+    for blk_size in 4 ; do
+    for blk_cache_size in 128; do
+    for table_cache_size in 1000; do
+    # buffer_size=67108864
+     # buffer_size=2097152
+    target_file_base=67108864
+    level1_max_bytes=$(($mb * 1048576))
+    buffer_size_mb=$((buffer_size / 1048576))
+    target_file_base_mb=$((target_file_base / 1048576))
+    block_size_write=$(($blk_size * 1024))
 
-                    log_file="RocksDB_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
-                    data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                    memory_log_file="$(pwd)/RocksDB_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
+    value_size_twitter=${cluster_value_size_map[$cluster_a]}
+    key_size_twitter=${cluster_key_size_map[$cluster_a]}
+
+    log_file="RocksDB_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}.log"
+    data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+    memory_log_file="$(pwd)/RocksDB_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -119,7 +119,6 @@ for i in {10..10}; do
                     # 输出slowdown_value和stop_value的匹配情况
                     echo "For ct0=$ct0, slowdown_value=$slowdown_value, stop_value=$stop_value"
 
-                    echo "base_num: $base_num"
                     echo "num_entries: $num_entries"
                     echo "value_size:$value_size_twitter"
                     echo "key_size:$key_size_twitter"
@@ -131,8 +130,7 @@ for i in {10..10}; do
                         --max_bytes_for_level_base=$level1_max_bytes \
                         --num=$num_kvs \
                         --block_size=$block_size_write  \
-                        --perf_level=5   \
-                        --statistics=true \
+                        --statistics=false \
                         --use_direct_reads=true \
                         --key_size=$key_size_twitter \
                         --value_size_=$value_size_twitter \
@@ -198,7 +196,5 @@ for i in {10..10}; do
                     done
                     done
                     done
-                    done
             done
         done
-done

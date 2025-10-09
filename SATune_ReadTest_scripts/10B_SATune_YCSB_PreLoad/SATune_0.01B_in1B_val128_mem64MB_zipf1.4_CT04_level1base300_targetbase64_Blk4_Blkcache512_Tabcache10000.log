@@ -1,0 +1,42 @@
+LevelDB:    version 1.23
+Date:       Mon Sep  1 20:32:30 2025
+CPU:        112 * Intel(R) Xeon(R) Gold 6348 CPU @ 2.60GHz
+CPUCache:   43008 KB
+open dbs:in Open()
+Macro USE_O_DIRECT is NOT defined.
+entering db_impl.cc:/mntdisk/SATune/SATuen_PreLoad_zipf1.4_1B_mem64MB_CT4_L1base300_targetbase64_Block4_Blkcache512_Tabcache10000_1
+workload_num: 10000000 entries_per_batch_:1
+ The key size:16 value size:100 
+The k_size:16 The v_size:100 
+AddressSanitizer:DEADLYSIGNAL
+=================================================================
+==765763==ERROR: AddressSanitizer: SEGV on unknown address 0x000000000000 (pc 0x7b654c247ab0 bp 0x7b6548dfe1c0 sp 0x7b6548dfe070 T1)
+==765763==The signal is caused by a READ memory access.
+==765763==Hint: address points to the zero page.
+    #0 0x7b654c247ab0 in __GI_____strtoul_l_internal ../stdlib/strtol_l.c:291
+    #1 0x5d5bd0b01342 in unsigned long long __gnu_cxx::__stoa<unsigned long long, unsigned long long, char, int>(unsigned long long (*)(char const*, char**, int), char const*, char const*, unsigned long*, int) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x43342)
+    #2 0x5d5bd0ae0c5d in std::__cxx11::stoull(std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&, unsigned long*, int) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x22c5d)
+    #3 0x5d5bd0af0701 in leveldb::Benchmark::Do_YCSB_benchmarking(leveldb::(anonymous namespace)::ThreadState*) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x32701)
+    #4 0x5d5bd0aec23a in leveldb::Benchmark::YCSB_benchmarking(leveldb::(anonymous namespace)::ThreadState*) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x2e23a)
+    #5 0x5d5bd0ae969a in leveldb::Benchmark::ThreadBody(void*) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x2b69a)
+    #6 0x5d5bd0b5cef5 in void std::__invoke_impl<void, void (*)(void*), void*>(std::__invoke_other, void (*&&)(void*), void*&&) /usr/include/c++/11/bits/invoke.h:61
+    #7 0x5d5bd0b5ce68 in std::__invoke_result<void (*)(void*), void*>::type std::__invoke<void (*)(void*), void*>(void (*&&)(void*), void*&&) /usr/include/c++/11/bits/invoke.h:96
+    #8 0x5d5bd0b5cdc8 in void std::thread::_Invoker<std::tuple<void (*)(void*), void*> >::_M_invoke<0ul, 1ul>(std::_Index_tuple<0ul, 1ul>) /usr/include/c++/11/bits/std_thread.h:259
+    #9 0x5d5bd0b5cd7d in std::thread::_Invoker<std::tuple<void (*)(void*), void*> >::operator()() /usr/include/c++/11/bits/std_thread.h:266
+    #10 0x5d5bd0b5cd5d in std::thread::_State_impl<std::thread::_Invoker<std::tuple<void (*)(void*), void*> > >::_M_run() /usr/include/c++/11/bits/std_thread.h:211
+    #11 0x7b654c6dc252  (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc252)
+    #12 0x7b654c294ac2 in start_thread nptl/pthread_create.c:442
+    #13 0x7b654c32684f  (/lib/x86_64-linux-gnu/libc.so.6+0x12684f)
+
+AddressSanitizer can not provide additional info.
+SUMMARY: AddressSanitizer: SEGV ../stdlib/strtol_l.c:291 in __GI_____strtoul_l_internal
+Thread T1 created by T0 here:
+    #0 0x7b654ce58685 in __interceptor_pthread_create ../../../../src/libsanitizer/asan/asan_interceptors.cpp:216
+    #1 0x7b654c6dc328 in std::thread::_M_start_thread(std::unique_ptr<std::thread::_State, std::default_delete<std::thread::_State> >, void (*)()) (/lib/x86_64-linux-gnu/libstdc++.so.6+0xdc328)
+    #2 0x5d5bd0b57825 in StartThread /home/jeff-wang/LSM-tuning/SATune/util/env_posix.cc:1303
+    #3 0x5d5bd0ae9c36 in leveldb::Benchmark::RunBenchmark(int, leveldb::Slice, void (leveldb::Benchmark::*)(leveldb::(anonymous namespace)::ThreadState*)) (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x2bc36)
+    #4 0x5d5bd0ae9204 in leveldb::Benchmark::Run() (/home/jeff-wang/LSM-tuning/SATune/release/db_bench+0x2b204)
+    #5 0x5d5bd0ade5ff in main /home/jeff-wang/LSM-tuning/SATune/benchmarks/db_bench.cc:2940
+    #6 0x7b654c229d8f in __libc_start_call_main ../sysdeps/nptl/libc_start_call_main.h:58
+
+==765763==ABORTING

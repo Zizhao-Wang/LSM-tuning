@@ -41,13 +41,18 @@ class TableCache {
   // If a seek to internal key "k" in specified file finds an entry,
   // call (*handle_result)(arg, found_key, found_value).
   Status Get(const ReadOptions& options, uint64_t file_number,
-  uint64_t file_size, int level, const Slice& k, void* arg, void (*handle_result)(void*, const Slice&,const Slice&));
+    uint64_t file_size, int level, const Slice& k, void* arg, void (*handle_result)(void*, const Slice&,const Slice&));
+
+  Status Get0(const ReadOptions& options, uint64_t file_number,
+    uint64_t file_size, int level, const Slice& k, void* arg, void (*handle_result)(void*, const Slice&,const Slice&));
 
   // Evict any entry for the specified file number
   void Evict(uint64_t file_number);
 
  private:
   Status FindTable(uint64_t file_number, uint64_t file_size,int level, Cache::Handle**);
+  Status FindTable0(uint64_t file_number, uint64_t file_size,int level, Cache::Handle**);
+  Status FindTableOtherLevel(uint64_t file_number, uint64_t file_size,int level, Cache::Handle**);
 
   Env* const env_;
   const std::string dbname_;

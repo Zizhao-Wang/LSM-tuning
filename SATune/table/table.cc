@@ -9,11 +9,13 @@
 #include "leveldb/env.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/options.h"
+#include "leveldb/performance_profile.h"
 #include "table/block.h"
 #include "table/filter_block.h"
 #include "table/format.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
+
 
 namespace leveldb {
 
@@ -264,19 +266,46 @@ Iterator* Table::NewIterator(const ReadOptions& options) const {
 }
 
 Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
-                          void (*handle_result)(void*, const Slice&,
-                                                const Slice&)) {
+    void (*handle_result)(void*, const Slice&, const Slice&)) {
   Status s;
-  Iterator* iiter = rep_->index_block->NewIterator(rep_->options.comparator);
-  iiter->Seek(k);
+
+  Iterator* iiter= nullptr;
+  {
+    LEVELDB_PROFILE_OTHER_LEVELS_INDEX_BLOCK_SEARCH();
+    iiter = rep_->index_block->NewIterator(rep_->options.comparator);
+    iiter->Seek(k);
+  }
+
   if (iiter->Valid()) {
     Slice handle_value = iiter->value();
     FilterBlockReader* filter = rep_->filter;
     BlockHandle handle;
-    if (filter != nullptr && handle.DecodeFrom(&handle_value).ok() &&
-        !filter->KeyMayMatch(handle.offset(), k)) {
-      // Not found
-    } else {
+
+    if (filter != nullptr && handle.DecodeFrom(&handle_value).ok()) {
+      bool key_may_match;
+      {
+        LEVELDB_PROFILE_OTHER_LEVELS_BLOOM_FILTER_CHECK(); // Profile the check operation
+        key_may_match = filter->KeyMayMatch(handle.offset(), k);
+      }
+
+      if (key_may_match) {
+        LEVELDB_PROFILE_OTHER_LEVELS_DATA_BLOCK_READ();
+        Iterator* block_iter = BlockReader(this, options, iiter->value(), -1);
+        block_iter->Seek(k);
+
+        if (block_iter->Valid()) {
+          LEVELDB_PROFILE_OTHER_LEVELS_BLOOM_FILTER_POSITIVE();
+          (*handle_result)(arg, block_iter->key(), block_iter->value());
+        }else{
+          LEVELDB_PROFILE_OTHER_LEVELS_BLOOM_FILTER_NEGATIVE();
+        }
+
+        s = block_iter->status();
+        delete block_iter;
+      }
+    }else {
+      LEVELDB_PROFILE_OTHER_LEVELS_DATA_BLOCK_READ();
+      // 没有filter的情况，直接读取Data Block
       Iterator* block_iter = BlockReader(this, options, iiter->value(), -1);
       block_iter->Seek(k);
       if (block_iter->Valid()) {
@@ -286,6 +315,67 @@ Status Table::InternalGet(const ReadOptions& options, const Slice& k, void* arg,
       delete block_iter;
     }
   }
+
+  if (s.ok()) {
+    s = iiter->status();
+  }
+  delete iiter;
+  return s;
+}
+
+
+Status Table::InternalGet0(const ReadOptions& options, const Slice& k, void* arg,
+                          void (*handle_result)(void*, const Slice&,
+                                                const Slice&)) {
+  Status s;
+
+  Iterator* iiter= nullptr;
+  {
+    LEVELDB_PROFILE_LEVEL0_INDEX_BLOCK_SEARCH();
+    iiter = rep_->index_block->NewIterator(rep_->options.comparator);
+    iiter->Seek(k);
+  }
+
+  if (iiter->Valid()) {
+    Slice handle_value = iiter->value();
+    FilterBlockReader* filter = rep_->filter;
+    BlockHandle handle;
+
+    if (filter != nullptr && handle.DecodeFrom(&handle_value).ok()) {
+      bool key_may_match;
+      {
+        LEVELDB_PROFILE_LEVEL0_BLOOM_FILTER_CHECK(); // Profile the check operation
+        key_may_match = filter->KeyMayMatch(handle.offset(), k);
+      }
+
+      if (key_may_match) {
+        LEVELDB_PROFILE_LEVEL0_DATA_BLOCK_READ();
+        Iterator* block_iter = BlockReader(this, options, iiter->value(), -1);
+        block_iter->Seek(k);
+
+        if (block_iter->Valid()) {
+          LEVELDB_PROFILE_LEVEL0_BLOOM_FILTER_POSITIVE();
+          (*handle_result)(arg, block_iter->key(), block_iter->value());
+        }else{
+          LEVELDB_PROFILE_LEVEL0_BLOOM_FILTER_NEGATIVE();
+        }
+        
+        s = block_iter->status();
+        delete block_iter;
+      }
+    }else {
+      LEVELDB_PROFILE_LEVEL0_DATA_BLOCK_READ();
+      // 没有filter的情况，直接读取Data Block
+      Iterator* block_iter = BlockReader(this, options, iiter->value(), -1);
+      block_iter->Seek(k);
+      if (block_iter->Valid()) {
+        (*handle_result)(arg, block_iter->key(), block_iter->value());
+      }
+      s = block_iter->status();
+      delete block_iter;
+    }
+  }
+
   if (s.ok()) {
     s = iiter->status();
   }

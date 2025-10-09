@@ -8,6 +8,7 @@
 #include "leveldb/env.h"
 #include "leveldb/table.h"
 #include "util/coding.h"
+#include "leveldb/performance_profile.h"
 
 namespace leveldb {
 
@@ -39,6 +40,59 @@ TableCache::TableCache(const std::string& dbname, const Options& options,
 TableCache::~TableCache() { delete cache_; }
 
 Status TableCache::FindTable(uint64_t file_number, uint64_t file_size, int level,
+   Cache::Handle** handle) {
+  Status s;
+  char buf[sizeof(file_number)];
+  EncodeFixed64(buf, file_number);
+  Slice key(buf, sizeof(buf));
+  *handle = cache_->Lookup(key);
+  if (*handle == nullptr) {
+    std::string fname = TableFileName(options_, dbname_, file_number, level);
+    // fprintf(stderr,"The file name is:%s in level %d\n",fname.c_str(),level);
+    RandomAccessFile* file = nullptr;
+    Table* table = nullptr;
+
+    bool use_direct_io = options_.use_direct_random_access;
+    s = env_->NewRandomAccessFile(fname, &file, use_direct_io);
+
+    if (!s.ok()) {
+      std::string old_fname = SSTTableFileName(dbname_, file_number);
+      if (env_->NewRandomAccessFile(old_fname, &file, use_direct_io).ok()) {
+        s = Status::OK();
+      }
+    } 
+      
+    if (s.ok()) {
+      s = Table::Open(options_, file, file_size, &table, file_number);
+    }
+
+    if (!s.ok()) {
+      // ======================= Print all the details about the file that caused the error here.
+      fprintf(stderr, "\n---[ LevelDB Corruption Detected in TableCache::FindTable ]---\n");
+      fprintf(stderr, "    File Number: %llu\n", static_cast<unsigned long long>(file_number));
+      fprintf(stderr, "    File Path:   %s\n", fname.c_str());
+      fprintf(stderr, "    File Size:   %llu bytes\n", static_cast<unsigned long long>(file_size));
+      fprintf(stderr, "    Error:       %s\n", s.ToString().c_str());
+      fprintf(stderr, "-----------------------------------------------------------------\n\n");
+      fflush(stderr); 
+
+      assert(table == nullptr);
+      delete file;
+      // We do not cache error results so that if the error is transient,
+      // or somebody repairs the file, we recover automatically.
+    } else {
+      TableAndFile* tf = new TableAndFile;
+      tf->file = file;
+      tf->table = table;
+      *handle = cache_->Insert(key, tf, 1, &DeleteEntry);
+    }
+  }
+  return s;
+}
+
+
+
+Status TableCache::FindTable0(uint64_t file_number, uint64_t file_size, int level,
                              Cache::Handle** handle) {
   Status s;
   char buf[sizeof(file_number)];
@@ -50,16 +104,85 @@ Status TableCache::FindTable(uint64_t file_number, uint64_t file_size, int level
     // fprintf(stderr,"The file name is:%s in level %d\n",fname.c_str(),level);
     RandomAccessFile* file = nullptr;
     Table* table = nullptr;
-    bool use_direct_io = options_.use_direct_random_access;
-    s = env_->NewRandomAccessFile(fname, &file, use_direct_io);
-    if (!s.ok()) {
-      std::string old_fname = SSTTableFileName(dbname_, file_number);
-      if (env_->NewRandomAccessFile(old_fname, &file, use_direct_io).ok()) {
-        s = Status::OK();
+
+    {
+      LEVELDB_PROFILE_LEVEL0_FILE_OPEN();
+      bool use_direct_io = options_.use_direct_random_access;
+
+      s = env_->NewRandomAccessFile(fname, &file, use_direct_io);
+
+      if (!s.ok()) {
+        std::string old_fname = SSTTableFileName(dbname_, file_number);
+        if (env_->NewRandomAccessFile(old_fname, &file, use_direct_io).ok()) {
+          s = Status::OK();
+        }
       }
     }
-    if (s.ok()) {
-      s = Table::Open(options_, file, file_size, &table, file_number);
+
+
+    {
+      LEVELDB_PROFILE_LEVEL0_TABLE_OPEN();
+      if (s.ok()) {
+        s = Table::Open(options_, file, file_size, &table, file_number);
+      }
+    }
+
+    if (!s.ok()) {
+      // ======================= Print all the details about the file that caused the error here.
+      fprintf(stderr, "\n---[ LevelDB Corruption Detected in TableCache::FindTable ]---\n");
+      fprintf(stderr, "    File Number: %llu\n", static_cast<unsigned long long>(file_number));
+      fprintf(stderr, "    File Path:   %s\n", fname.c_str());
+      fprintf(stderr, "    File Size:   %llu bytes\n", static_cast<unsigned long long>(file_size));
+      fprintf(stderr, "    Error:       %s\n", s.ToString().c_str());
+      fprintf(stderr, "-----------------------------------------------------------------\n\n");
+      fflush(stderr); 
+
+      assert(table == nullptr);
+      delete file;
+      // We do not cache error results so that if the error is transient,
+      // or somebody repairs the file, we recover automatically.
+    } else {
+      TableAndFile* tf = new TableAndFile;
+      tf->file = file;
+      tf->table = table;
+      *handle = cache_->Insert(key, tf, 1, &DeleteEntry);
+    }
+  }
+  return s;
+}
+
+
+Status TableCache::FindTableOtherLevel(uint64_t file_number, uint64_t file_size, int level,
+                             Cache::Handle** handle) {
+  Status s;
+  char buf[sizeof(file_number)];
+  EncodeFixed64(buf, file_number);
+  Slice key(buf, sizeof(buf));
+  *handle = cache_->Lookup(key);
+  if (*handle == nullptr) {
+    std::string fname = TableFileName(options_, dbname_, file_number, level);
+    // fprintf(stderr,"The file name is:%s in level %d\n",fname.c_str(),level);
+    RandomAccessFile* file = nullptr;
+    Table* table = nullptr;
+
+    {
+      LEVELDB_PROFILE_LEVEL0_FILE_OPEN();
+      bool use_direct_io = options_.use_direct_random_access;
+      s = env_->NewRandomAccessFile(fname, &file, use_direct_io);
+
+      if (!s.ok()) {
+        std::string old_fname = SSTTableFileName(dbname_, file_number);
+        if (env_->NewRandomAccessFile(old_fname, &file, use_direct_io).ok()) {
+          s = Status::OK();
+        }
+      }
+    }
+
+    {
+      LEVELDB_PROFILE_LEVEL0_TABLE_OPEN();
+      if (s.ok()) {
+        s = Table::Open(options_, file, file_size, &table, file_number);
+      }
     }
 
     if (!s.ok()) {
@@ -113,10 +236,24 @@ Status TableCache::Get(const ReadOptions& options, uint64_t file_number,
                        void (*handle_result)(void*, const Slice&,
                                              const Slice&)) {
   Cache::Handle* handle = nullptr;
-  Status s = FindTable(file_number, file_size,level, &handle);
+  Status s = FindTableOtherLevel(file_number, file_size,level, &handle);
   if (s.ok()) {
     Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
     s = t->InternalGet(options, k, arg, handle_result);
+    cache_->Release(handle);
+  }
+  return s;
+}
+
+Status TableCache::Get0(const ReadOptions& options, uint64_t file_number,
+                       uint64_t file_size, int level, const Slice& k, void* arg,
+                       void (*handle_result)(void*, const Slice&,
+                                             const Slice&)) {
+  Cache::Handle* handle = nullptr;
+  Status s = FindTable0(file_number, file_size,level, &handle);
+  if (s.ok()) {
+    Table* t = reinterpret_cast<TableAndFile*>(cache_->Value(handle))->table;
+    s = t->InternalGet0(options, k, arg, handle_result);
     cache_->Release(handle);
   }
   return s;

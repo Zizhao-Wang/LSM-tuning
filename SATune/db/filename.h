@@ -72,6 +72,10 @@ std::string OldInfoLogFileName(const std::string& dbname);
 
 std::string OldVersionDebugLogFileName(const std::string& dbname);
 
+std::string TuningLogFileName(const std::string& dbname);
+
+std::string OldTuningLogFileName(const std::string& dbname);
+
 // If filename is a leveldb file, store the type of the file in *type.
 // The number encoded in the filename is stored in *number.  If the
 // filename was successfully parsed, returns true.  Else return false.

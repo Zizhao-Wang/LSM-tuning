@@ -137,6 +137,110 @@ namespace leveldb {
     AWAITING_BASELINE           // 等待建立基准 (可选，也可以通过 l0variancestats_.table_number == 0 判断)
 	};
 
+  struct FlushStats {
+    // 原有的丢弃比例
+    double average_discard_ratio_in_flush;
+    
+    // Flush频率相关
+    uint64_t user_bytes_written;          // 用户写入的字节数
+    uint64_t total_flush_count;           // 总flush次数
+    uint64_t total_bytes_flushed;         // 总共flush的字节数
+    
+    // 写放大相关 (Write Amplification)
+    double write_amplification_ratio;     // 写放大比例
+    uint64_t actual_bytes_written;        // 实际写入磁盘的字节数
+    
+    // 构造函数初始化
+    FlushStats() :average_discard_ratio_in_flush(0.0),total_flush_count(0), write_amplification_ratio(1.0),
+    user_bytes_written(0),actual_bytes_written(0) {}
+    
+    // 更新写放大比例的辅助方法
+    void update_write_amplification() {
+      if (user_bytes_written > 0) {
+        write_amplification_ratio = static_cast<double>(actual_bytes_written) / user_bytes_written;
+      }
+    }
+  };
+
+  struct LevelStallStats {
+    // Statistics for short (1ms) slowdowns when L0 file count is high.
+    std::atomic<uint64_t> slowdown_micros{0};
+    std::atomic<uint64_t> slowdown_count{0};
+    // Statistics for hard stops when L0 file count or memtable count is critical.
+    std::atomic<uint64_t> stop_micros{0};
+    std::atomic<uint64_t> stop_count{0};
+    std::atomic<uint64_t> total_slow_or_stop_time{0};
+
+    // New: L0 Overlimit Detection Statistics
+    std::atomic<uint64_t> l0_exceed_trigger_count{0};
+    std::atomic<uint64_t> l0_exceed_total_files{0};
+    std::atomic<uint64_t> l0_max_exceeded_files{0};
+
+    LevelStallStats() = default;
+
+    LevelStallStats(const LevelStallStats& other) {
+      slowdown_micros.store(other.slowdown_micros.load());
+      slowdown_count.store(other.slowdown_count.load());
+      stop_micros.store(other.stop_micros.load());
+      stop_count.store(other.stop_count.load());
+      total_slow_or_stop_time.store(other.total_slow_or_stop_time.load());
+    }
+
+    void RecordL0Exceed(const int current_files, int trigger_limit) {
+      if (current_files > trigger_limit) {
+        int exceeded = current_files - trigger_limit;
+        l0_exceed_trigger_count.fetch_add(1);
+        l0_exceed_total_files.fetch_add(exceeded);
+
+        // 更新最大超出值（原子操作）
+        uint64_t current_max = l0_max_exceeded_files.load();
+        while (exceeded > current_max) {
+          if (l0_max_exceeded_files.compare_exchange_weak(current_max, exceeded)) {
+            break;
+          }
+        }
+        // fprintf(stdout, "[L0_EXCEED] current_files=%d, trigger_limit=%d, exceeded=%d, exceed_count=%lu, max_exceeded=%lu\n",
+        //   current_files, trigger_limit, exceeded, l0_exceed_trigger_count.load(), l0_max_exceeded_files.load());
+      }
+    }
+
+    void CalculateDeltaAndUpdate(const LevelStallStats& current, const LevelStallStats& previous) {
+      slowdown_micros.store(current.slowdown_micros.load() - previous.slowdown_micros.load());
+      slowdown_count.store(current.slowdown_count.load() - previous.slowdown_count.load());
+      stop_micros.store(current.stop_micros.load() - previous.stop_micros.load());
+      stop_count.store(current.stop_count.load() - previous.stop_count.load());
+      total_slow_or_stop_time.store(current.total_slow_or_stop_time.load() - previous.total_slow_or_stop_time.load());
+
+      //
+      l0_exceed_trigger_count.store(current.l0_exceed_trigger_count-previous.l0_exceed_trigger_count);
+      l0_exceed_total_files.store(current.l0_exceed_total_files-previous.l0_exceed_total_files);
+      l0_max_exceeded_files.store(current.l0_max_exceeded_files-previous.l0_max_exceeded_files);
+    }
+
+
+    // 自定义赋值操作符
+    LevelStallStats& operator=(const LevelStallStats& other) {
+      if (this != &other) {
+        slowdown_micros.store(other.slowdown_micros.load());
+        slowdown_count.store(other.slowdown_count.load());
+        stop_micros.store(other.stop_micros.load());
+        stop_count.store(other.stop_count.load());
+        total_slow_or_stop_time.store(other.total_slow_or_stop_time.load());
+      }
+      return *this;
+    }
+
+    int64_t CalculateStallTimeDifference(const LevelStallStats& other) {
+      uint64_t current_stall_time = total_slow_or_stop_time.load();
+      uint64_t last_stall_time = other.total_slow_or_stop_time.load();
+        
+      // 返回差值（current - last）
+      // 正值表示当前batch stall时间增加了（性能变差）
+      // 负值表示当前batch stall时间减少了（性能变好）
+      return static_cast<int64_t>(current_stall_time) - static_cast<int64_t>(last_stall_time);
+    }   
+
+  };
 
 }  // namespace leveldb
 

@@ -25,6 +25,8 @@
 #include "port/thread_annotations.h"
 #include "db/db_compaction_options.h"
 #include "db/log_stats.h"
+#include "include/leveldb/performance_profile.h"
+
 
 namespace leveldb {
 
@@ -316,6 +318,8 @@ class VersionSet {
   bool compute_hot_cold_range(const Slice& key, const std::pair<Slice, Slice>& hot_range, bool& is_hot);
 
   //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
+
+  void RefinalizeCurrentVersion();
 
  private:
   class Builder;

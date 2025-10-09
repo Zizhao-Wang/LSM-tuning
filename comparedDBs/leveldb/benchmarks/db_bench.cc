@@ -749,7 +749,7 @@ class Stats {
       double now = g_env->NowMicros();
       double micros = now - last_op_finish_;
       hist_[op].Add(micros);
-      if (micros > 20000) {
+      if (micros > 20000000) {
         fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
         fflush(stderr);
       }
@@ -792,7 +792,7 @@ class Stats {
       hist_[op].Add(micros);
       hist_[kAllOps].Add(micros);
 
-      if (micros > 2000000) {
+      if (micros > 20000000) {
         fprintf(stderr, "long op: %.1f micros%30s\r", micros, "");
         fflush(stderr);
       }
@@ -834,19 +834,19 @@ class Stats {
 
   void Addops(DB* db = nullptr) {
     real_ops++;
-    if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
-      PrintSpeed(); 
-      print_mem_usage();
-      if (FLAGS_print_wa && db) {
-        std::string stats;
-        if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
-          stats = "(failed)";
-        }
-        fprintf(stdout, "%s\n", stats.c_str());
-        fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
-        fflush(stdout);
-      }
-    }
+    // if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
+    //   PrintSpeed(); 
+    //   print_mem_usage();
+    //   if (FLAGS_print_wa && db) {
+    //     std::string stats;
+    //     if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
+    //       stats = "(failed)";
+    //     }
+    //     fprintf(stdout, "%s\n", stats.c_str());
+    //     fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
+    //     fflush(stdout);
+    //   }
+    // }
   }
 
   void Report(const Slice& name) {
@@ -1720,6 +1720,7 @@ class Benchmark {
         batch_bytes += val.size() + k_size ;
         bytes += val.size() + k_size ;
         ++num_written;
+        thread->stats.Addops();
         thread->stats.FinishedSingleOp(db_, kWrite);
       }
       s = db_->Write(write_options_, &batch);
@@ -2196,8 +2197,8 @@ class Benchmark {
           thread->stats.AddBytes(bytes);
           bytes = 0;
         }
-        thread->stats.FinishedSingleOp();
-        // thread->stats.FinishedSingleOp(db_);
+        // thread->stats.FinishedSingleOp();
+        thread->stats.FinishedSingleOp(db_);
       }
       s = db_->Write(write_options_, &batch);
       if (!s.ok()) {

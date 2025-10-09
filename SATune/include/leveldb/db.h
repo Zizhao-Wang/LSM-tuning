@@ -11,6 +11,7 @@
 #include "leveldb/export.h"
 #include "leveldb/iterator.h"
 #include "leveldb/options.h"
+#include "leveldb/performance_profile.h"
 
 namespace leveldb {
 
@@ -104,6 +105,8 @@ class LEVELDB_EXPORT DB {
   // Release a previously acquired snapshot.  The caller must not
   // use "snapshot" after this call.
   virtual void ReleaseSnapshot(const Snapshot* snapshot) = 0;
+
+  virtual LSMStateSnapshot GetLSMStateSnapshot() const = 0;
 
   // DB implementations can export properties about their state
   // via this method.  If "property" is a valid property understood by this

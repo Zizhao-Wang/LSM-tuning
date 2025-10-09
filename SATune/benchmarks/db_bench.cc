@@ -18,6 +18,7 @@
 #include "leveldb/comparator.h"
 #include "leveldb/db.h"
 #include "leveldb/env.h"
+#include "leveldb/performance_profile.h"
 #include "leveldb/filter_policy.h"
 #include "leveldb/write_batch.h"
 #include "port/port.h"
@@ -149,6 +150,8 @@ DEFINE_int32(duration, 0, "Time in seconds for the random-ops tests to run."
 
 // Size of each value
 DEFINE_int32(value_size, 100, "Size of each value");
+
+DEFINE_int32(value_size_, 100, "Size of each value");
 
 DEFINE_int32(key_size, 100, "Size of each value");
 
@@ -311,6 +314,20 @@ DEFINE_int64(block_size, 4LL * 1024,
 // ================================================================
 // The above FLAGS are specific to the Compaction module and should not be modified or reused for other logic.
 // ================================================================
+
+
+// ------------------------------------------------------------------
+// Performance Profiling Flags
+// The following parameters control performance profiling functionality during benchmarking.
+// Users can enable/disable profiling, configure report detail levels, and specify output files using these flags.
+DEFINE_bool(enable_performance_profiling, false, "Enable LevelDB performance profiling");
+DEFINE_bool(profile_show_details, false, "Show detailed breakdown in performance reports");
+// ------------------------------------------------------------------
+
+
+DEFINE_string(tuning_log_dir, "", "Custom directory for tuning log. If empty, uses default db directory");
+
+
 
 DEFINE_string(level_paths, "",
               "Specify paths for different levels in the format: "
@@ -735,17 +752,18 @@ class Stats {
     }
 
     if (g_env->NowMicros() > next_report_time_) {
-        PrintSpeed(); 
-        print_mem_usage();
-        next_report_time_ += FLAGS_report_interval * 1000000;
-        if (FLAGS_print_wa && db) {
-          std::string stats;
-          if (!db->GetProperty("leveldb.stats", &stats)) {
-            stats = "(failed)";
-          }
-          fprintf(stdout, "\n%s\n", stats.c_str());
-          fflush(stdout);
+      PrintSpeed(); 
+      print_mem_usage();
+      next_report_time_ += FLAGS_report_interval * 1000000;
+      if (FLAGS_print_wa && db) {
+        std::string stats;
+        if (!db->GetProperty("leveldb.stats", &stats)) {
+          stats = "(failed)";
         }
+        fprintf(stdout, "\n%s\n", stats.c_str());
+        leveldb::PrintPerformanceProfileIfEnabled(FLAGS_profile_show_details);
+        fflush(stdout);
+      }
     }
   }
 
@@ -771,6 +789,7 @@ class Stats {
         }
         fprintf(stdout, "%s\n", stats.c_str());
         fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n", done_, real_ops, bytes_/1048576.0);
+        // leveldb::PrintPerformanceProfileIfEnabled(FLAGS_profile_show_details);
         fflush(stdout);
       }
     }
@@ -783,14 +802,7 @@ class Stats {
   void Addops(DB* db = nullptr) {
     real_ops++;
     if((FLAGS_stats_interval != -1) && real_ops % FLAGS_stats_interval == 0) {
-      PrintSpeed(); 
-      print_mem_usage();
       if (FLAGS_print_wa && db) {
-        std::string stats;
-        if (!db->GetProperty_with_whole_lsm("leveldb.stats", &stats)) {
-          stats = "(failed)";
-        }
-        fprintf(stdout, "%s\n", stats.c_str());
         fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n\n", done_, real_ops, bytes_/1048576.0);
         fflush(stdout);
       }
@@ -875,6 +887,13 @@ struct ThreadState {
         trace = new TraceUniform(1000 + index * 345);
         read_trace = new TraceZipfian(1000 + index * 345);
       }
+
+  // 添加析构函数
+  ~ThreadState() {
+    delete trace;
+    delete read_trace;
+  }
+
 };
 
 
@@ -1121,6 +1140,9 @@ class Benchmark {
         method = &Benchmark::WriteCluster;
       } else if (name == Slice("clusterQuery")) {
         method = &Benchmark::Cluster_benchmarking;
+      } else if (name == Slice("YCSBQuery")) {
+        fresh_db = false;
+        method = &Benchmark::YCSB_benchmarking;
       } else if (name == Slice("filletc")) {
         fresh_db = true;
         method = &Benchmark::WriteRandom_from_file;
@@ -1404,22 +1426,29 @@ class Benchmark {
     options.compaction_opts.max_bytes_for_level1_multiplier = FLAGS_max_bytes_for_level1_multiplier;
     options.compaction_opts.level_for_multiplier_switch = FLAGS_multiplier_switch_level;
     options.compaction_opts.max_bytes_for_level_multiplier_after_switch = FLAGS_max_bytes_for_level_multiplier_after_switch;
+    options.custom_tuning_log_dir = FLAGS_tuning_log_dir;
 
-  if (!FLAGS_level_paths.empty()) {
-    ParseLevelPaths(FLAGS_level_paths, &options.level_paths);
 
-    fprintf(stderr, "--- Parsed Level Paths ---\n");
-    if (options.level_paths.empty()) {
-      fprintf(stderr, "No specific level paths were parsed.\n");
-    } else {
-      for (std::map<int, std::string>::const_iterator it = options.level_paths.begin();
-          it != options.level_paths.end(); ++it) {
-        fprintf(stderr, "  Level %d -> \"%s\"\n", it->first, it->second.c_str());
+    if (!FLAGS_level_paths.empty()) {
+      ParseLevelPaths(FLAGS_level_paths, &options.level_paths);
+
+      fprintf(stderr, "--- Parsed Level Paths ---\n");
+      if (options.level_paths.empty()) {
+        fprintf(stderr, "No specific level paths were parsed.\n");
+      } else {
+        for (std::map<int, std::string>::const_iterator it = options.level_paths.begin();
+            it != options.level_paths.end(); ++it) {
+          fprintf(stderr, "  Level %d -> \"%s\"\n", it->first, it->second.c_str());
+        }
       }
+      fprintf(stderr, "--------------------------\n");
     }
-    fprintf(stderr, "--------------------------\n");
-  }
 
+    leveldb::PerformanceProfileOptions profile_options;
+    profile_options.enable_profiling = FLAGS_enable_performance_profiling;
+    profile_options.auto_report_on_destruction = false;
+    profile_options.report_interval_operations = 0;
+    leveldb::PerformanceProfileOptions::SetGlobalOptions(profile_options);
 
     std::fprintf(stderr, "open dbs:in Open()\n");
     fflush(stderr);
@@ -1456,6 +1485,10 @@ class Benchmark {
   void Cluster_benchmarking(ThreadState* thread) { 
     Do_cluster_benchmarking(thread); 
   } 
+
+  void YCSB_benchmarking(ThreadState* thread) { 
+    Do_YCSB_benchmarking(thread); 
+  }
 
   void WriteRandom_from_file(ThreadState* thread) {
     DoWrite2(thread, false);
@@ -1732,10 +1765,102 @@ class Benchmark {
     fprintf(stderr, "====================================================\n");
   }
 
+  void Do_YCSB_benchmarking(ThreadState* thread) {
+    uint64_t num_written = 0;
+    std::string get_value;
+    uint64_t found=0;
+    ReadOptions roptions;
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      std::snprintf(msg, sizeof(msg), "(%ld ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch;
+    Status s;
+    int64_t bytesadd = 0;
+    int64_t bytesget = 0;
+    int64_t bytesread = 0;
+    int64_t bytes = 0;
+    int id = 0;
+
+    // 打开 CSV 文件
+    std::ifstream csv_file(FLAGS_data_file);
+    std::string line;
+    if (!csv_file.is_open()) {
+      fprintf(stderr, "Unable to open file: %s in Do_YCSB_benchmarking\n", FLAGS_data_file.c_str());
+      return;
+    }
+    std::getline(csv_file, line); // 读取并丢弃 CSV 文件的标题行
+    std::stringstream line_stream;
+    std::string cell;
+    std::vector<std::string> row_data;
+
+    fprintf(stderr, "workload_num: %ld entries_per_batch_:%d\n The key size:%d value size:%d \n", 
+      FLAGS_workload_num, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
+
+    const int32_t k_size=FLAGS_key_size;
+    const int32_t v_size=FLAGS_value_size;
+    fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+
+    for (int64_t i = 0; i < FLAGS_workload_num; i += 1) {
+      batch.Clear();
+      int64_t rand_num = 0;
+      line_stream.clear();
+      line_stream.str("");
+      row_data.clear();
+
+      if (!std::getline(csv_file, line)) { 
+        fprintf(stderr, "Error reading key from file\n");
+        return;
+      }
+
+      line_stream << line;
+      while (getline(line_stream, cell, ',')) {
+        row_data.push_back(cell);
+      }
+
+      if (row_data.size() != 1) {
+        fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
+        continue;
+      }
+
+      if(i<=10){
+        fprintf(stdout,"the row_data[0] is:%s\n",row_data[0].c_str());
+      }
+
+      char key1[100];
+      const uint64_t k = std::stoull(row_data[0]);
+      std::snprintf(key1, sizeof(key1), "%016llu", (unsigned long long)k);
+
+      Slice readkey(key1);
+      std::string* ts_ptr = nullptr;
+      auto db_write_start = std::chrono::high_resolution_clock::now();
+      auto sta1 = db_->Get(roptions, readkey, &get_value);
+      auto db_write_end = std::chrono::high_resolution_clock::now();
+      auto batch_duration_micros = std::chrono::duration_cast<std::chrono::microseconds>(db_write_end - db_write_start).count();
+      
+      if (sta1.ok()) {
+        found++;
+      }
+      bytesget = (k_size + v_size);
+      thread->stats.AddBytes(bytesget);
+      thread->stats.FinishedSingleOp(db_, kPointQuery,batch_duration_micros);
+    }
+    thread->stats.print_mem_usage();
+    // thread->stats.printf_mem(db_.db);
+    fprintf(stderr, "Total bytes written: %ld, %lu keys are founded.\n", bytes,found); // 输出总写入字节数
+    thread->stats.AddBytes(bytes);
+  }
+
+
+
   void Do_cluster_benchmarking(ThreadState* thread) {
     uint64_t num_written = 0;
     std::string get_value;
-    uint64_t found;
+    uint64_t found=0;
     ReadOptions roptions;
 
     if (num_ != FLAGS_num) {
@@ -1798,6 +1923,9 @@ class Benchmark {
         fprintf(stdout,"the row_data[5] is:%s\n",row_data[5].c_str());
       }
 
+
+      int64_t batch_duration_micros = 0;
+
       if (row_data[5]=="get"||row_data[5]=="gets"){
         char formatget[20];
         char key1[100];
@@ -1806,13 +1934,16 @@ class Benchmark {
         std::snprintf(key1, sizeof(key1), formatget, (unsigned long long)k);
         Slice readkey(key1);
         std::string* ts_ptr = nullptr;
+        auto db_write_start = std::chrono::high_resolution_clock::now();
         auto sta1 = db_->Get(roptions, readkey, &get_value);
+        auto db_write_end = std::chrono::high_resolution_clock::now();
+        batch_duration_micros = std::chrono::duration_cast<std::chrono::microseconds>(db_write_end - db_write_start).count();
         if (sta1.ok()) {
           found++;
         }
         bytesget = (k_size + v_size);
         thread->stats.AddBytes(bytesget);
-        thread->stats.FinishedSingleOp(db_, kPointQuery);
+        thread->stats.FinishedSingleOp(db_, kPointQuery,batch_duration_micros);
       }else if(row_data[5]=="add"||row_data[5]=="set"){
         char formatadd[20];
         char key2[100];
@@ -1822,38 +1953,17 @@ class Benchmark {
         Slice val = gen.Generate(FLAGS_value_size);
         // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
         batch.Put(key2, val);
-        bytesadd += val.size() + k_size ;
+        bytesadd += val.size() + k_size;
+        auto db_write_start = std::chrono::high_resolution_clock::now();
         s = db_->Write(write_options_, &batch);
+        auto db_write_end = std::chrono::high_resolution_clock::now();
+        batch_duration_micros = std::chrono::duration_cast<std::chrono::microseconds>(db_write_end - db_write_start).count();        
         thread->stats.AddBytes(bytesadd);
-        thread->stats.FinishedSingleOp(db_, kWrite);
+        thread->stats.FinishedSingleOp(db_, kWrite,batch_duration_micros);
         if (!s.ok()) {
           fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
           exit(0);
         } 
-      }else if(row_data[5]=="cas"){
-        char formatcas[20];
-        char key1[100];
-        const uint64_t k = std::stoull(row_data[1]);
-        std::snprintf(formatcas, sizeof(formatcas), "%%0%dllu", k_size);
-        std::snprintf(key1, sizeof(key1), formatcas, (unsigned long long)k);
-        Slice readkey(key1);
-        std::string* ts_ptr = nullptr;
-        auto sta2 = db_->Get(roptions, readkey, &get_value);
-        bytesread = (k_size + v_size);
-        if (sta2.ok()) {
-          char format3[20];
-          char key3[100];
-          const uint64_t cask = std::stoull(row_data[1]);
-          std::snprintf(format3, sizeof(format3), "%%0%dllu", k_size);
-          std::snprintf(key3, sizeof(key3), format3, (unsigned long long)cask);
-          Slice val3 = gen.Generate(FLAGS_value_size);
-          // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val3.size()); // 输出写入的键和值大小
-          batch.Put(key3, val3);
-          bytesread += val3.size() + k_size ;
-          s = db_->Write(write_options_, &batch);
-        }
-        thread->stats.AddBytes(bytesread);
-        thread->stats.FinishedSingleOp(db_, kReadModifyWrite);
       }else{
       }
     }
@@ -2281,10 +2391,14 @@ class Benchmark {
           thread->stats.AddBytes(bytes);
           bytes = 0;
         }
-        thread->stats.FinishedSingleOp();
-        // thread->stats.FinishedSingleOp(db_);
       }
+
+      double start_time = Env::Default()->NowMicros();  
       s = db_->Write(write_options_, &batch);
+      double end_time = Env::Default()->NowMicros();
+      double micros_per_op = end_time - start_time;
+      thread->stats.FinishedSingleOp(db_,kWrite,micros_per_op);
+
       if (!s.ok()) {
         std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
         std::exit(1);
@@ -2426,17 +2540,22 @@ class Benchmark {
         // const uint64_t k = seq ? i+j : (thread->trace->Next() % FLAGS_range);
         char key[100];
         snprintf(key, sizeof(key), "%016llu", (unsigned long long)k);
-        batch.Put(key, gen.Generate(value_size_));
-        bytes += value_size_ + strlen(key);
+        batch.Put(key, gen.Generate(FLAGS_value_size_));
+        bytes += FLAGS_value_size_ + strlen(key);
         if(thread->stats.real_ops % FLAGS_stats_interval == 0 ){
           // fprintf(stderr,"real_ops : %lu\n",thread->stats.real_ops);
           thread->stats.AddBytes(bytes);
           bytes = 0;
         }
-        thread->stats.FinishedSingleOp();
-        // thread->stats.FinishedSingleOp(db_);
+
+        double start_time = Env::Default()->NowMicros();
+        s = db_->Write(write_options_, &batch);
+        double end_time = Env::Default()->NowMicros();
+        double micros_per_op = end_time - start_time;
+
+        thread->stats.FinishedSingleOp(db_, kWrite, micros_per_op);
       }
-      s = db_->Write(write_options_, &batch);
+
       if (!s.ok()) {
         std::fprintf(stderr, "put error: %s\n", s.ToString().c_str());
         std::exit(1);
@@ -2701,6 +2820,7 @@ class Benchmark {
       stats = "(failed)";
     }
     std::fprintf(stdout, "\n%s\n", stats.c_str());
+    leveldb::PrintPerformanceProfileIfEnabled(FLAGS_profile_show_details);
   }
 
   static void WriteToFile(void* arg, const char* buf, int n) {

@@ -25,11 +25,11 @@ class VersionEdit;
 Status BuildTable(const std::string& dbname, Env* env, const Options& options,
   TableCache* table_cache, Iterator* iter, FileMetaData* meta) ;
 
-Status BuildTable2(const std::string& dbname, Env* env, const Options& options,
-  TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total) ;
+Status BuildTable2(const std::string& dbname, Env* env, const Options& options,TableCache* table_cache, 
+  Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total, int64_t* memtable_size) ;
 
 Status BuildTableWithVarianceWiMerge(const std::string& dbname, Env* env, const Options& options,
-    TableCache* table_cache, Iterator* iter, FileMetaData* meta,double* variance_output, int64_t* tlb_unique, int64_t* table_total);
+    TableCache* table_cache, Iterator* iter, FileMetaData* meta,double* variance_output, int64_t* tlb_unique, int64_t* table_total, int64_t* memtable_size);
 
 Status BuildTableWithVarianceWoMerge(const std::string& dbname, Env* env, const Options& options,
     TableCache* table_cache, Iterator* iter, FileMetaData* meta,double* variance_output, int64_t* tlb_unique, int64_t* table_total);

@@ -8,7 +8,7 @@ billion=1000000000
 percentages=(1 5 10 15 20 25 30) # 定义百分比值
 range_dividers=(1)
 DEVICE_NAME="sdd"
-level1base=500
+level1base=512
 
 convert_to_billion_format() {
     local num=$1
@@ -44,7 +44,7 @@ for i in {10..10}; do
                     buffer_size_mb=$((buffer_size / 1048576))        
                     log_file="leveldb_${num_format}_val_${value_size}_mem${buffer_size_mb}MB_unifrom_factor${F}_level1base${level1base}MiB.log"
                     data_file="/mnt/workloads/uniform_read_keys16_value128_1B.csv" # 构建数据文件路径
-                    memory_log_file="/home/jeff-wang/LSM-tuning/comparedDBs/performance_test_scripts/leveldb_experiment/10B_leveldb_tuning_structure(f_c0)_experiments_C0${level1base}/leveldb_uniform_f${F}_memory_usage_${num_format}_key16_val${value_size}_mem${buffer_size_mb}MiB_factor${F}_level1base${level1base}MiB.log"  
+                    memory_log_file="$(pwd)/leveldb_uniform_f${F}_memory_usage_${num_format}_key16_val${value_size}_mem${buffer_size_mb}MiB_factor${F}_level1base${level1base}MiB.log"  
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then

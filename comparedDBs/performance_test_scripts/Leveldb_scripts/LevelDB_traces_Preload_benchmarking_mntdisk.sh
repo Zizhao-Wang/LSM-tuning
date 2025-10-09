@@ -59,28 +59,22 @@ convert_to_billion_format() {
     fi
 }
 
-for i in {10..10}; do
-    base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_Twitter_PreLoad_Performance"
+for i in 13 40 49 1 ; do
+    dir1="LevelDB_Twitter_cluster${i}_PreLoad_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
         for value_size in 128; do
-            num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
-            stats_interva=$((num_entries / 100))
-            num_entries=1000000000
-
-            for cluster_a in 25; do  # 
+            for cluster_a in $i ; do  # 
                 for ct0 in 4 ; do  # 
-                for mb in 512; do
+                for mb in 10; do
                 for buffer_size in 67108864; do
-                for num_kvs in 200000000 400000000 600000000 800000000 1000000000; do
+                for num_kvs in 200000000 ; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 4 8 10 16 32; do
-                for blk_cache_size in 32 128 512 1024; do
-                for table_cache_size in 300 1000 5000 10000; do
+                    stats_interva=$((num_kvs / 100))
+
                     # buffer_size=67108864
                     # buffer_size=2097152
                     target_file_base=67108864
@@ -92,9 +86,9 @@ for i in {10..10}; do
                     value_size_twitter=${cluster_value_size_map[$cluster_a]}
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                    log_file="RocksDB_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
+                    log_file="LevelDB_PreLoad_Cluster${cluster_a}_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_CT0${ct0}_level1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
                     data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                    memory_log_file="$(pwd)/RocksDB_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
+                    memory_log_file="$(pwd)/LevelDB_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -103,7 +97,7 @@ for i in {10..10}; do
                     fi
 
                     # 创建相应的目录
-                    db_dir="/mntdisk/rocks10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                    db_dir="/mntdisk/level10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -113,6 +107,7 @@ for i in {10..10}; do
                         rm -rf "${db_dir:?}/"*
                     fi
 
+                    echo fb0-=0-= | sudo -S bash -c 'echo 1 > /proc/sys/vm/drop_caches'
                     # 获取对应ct0的slowdown和stop值
                     slowdown_value=${slowdown_map[$ct0]}
                     stop_value=${stop_map[$ct0]}
@@ -120,43 +115,31 @@ for i in {10..10}; do
                     echo "For ct0=$ct0, slowdown_value=$slowdown_value, stop_value=$stop_value"
 
                     echo "base_num: $base_num"
-                    echo "num_entries: $num_entries"
                     echo "value_size:$value_size_twitter"
                     echo "key_size:$key_size_twitter"
                     echo "stats_interval: $stats_interva"
                     echo "$num_format"
                             
-                    ../../../rocksdb/release/db_bench \
+                    ../../../leveldb/release/db_bench \
                         --db=$db_dir \
-                        --max_bytes_for_level_base=$level1_max_bytes \
                         --num=$num_kvs \
-                        --block_size=$block_size_write  \
-                        --perf_level=5   \
-                        --statistics=true \
-                        --use_direct_reads=true \
                         --key_size=$key_size_twitter \
-                        --value_size_=$value_size_twitter \
+                        --value_size=$value_size_twitter \
                         --batch_size=1 \
                         --benchmarks=fillcluster,stats \
-                        --data_file_path=$data_file  \
+                        --data_file=$data_file  \
+                        --logpath=/mnt/logs \
                         --bloom_bits=10 \
+                        --log=1  \
                         --cache_size=8388608 \
-                        --use_direct_io_for_flush_and_compaction=true \
-                        --level0_file_num_compaction_trigger=$ct0 \
-                        --level0_slowdown_writes_trigger=$slowdown_value \
-                        --level0_stop_writes_trigger=$stop_value \
-                        --max_background_compactions=8 \
-                        --max_background_flushes=1 \
-                        --open_files=80000 \
-                        --compression_ratio=0 \
-                        --stats_interval=$stats_interva \
-                        --stats_per_interval=$stats_interva \
-                        --histogram=1 \
-                        --use_existing_db=false \
-                        --write_buffer_size=$buffer_size \
                         --mem_log_file=$memory_log_file \
-                        --target_file_size_base=$target_file_base   \
-                        --compression_type=none \
+                        --open_files=1000 \
+                        --compression=0 \
+                        --stats_interval=$stats_interva \
+                        --histogram=1 \
+                        --write_buffer_size=$buffer_size \
+                        --max_file_size=$buffer_size   \
+                        --print_wa=true \
                         &> >( tee $log_file) &  
 
                         # 保存 db_bench 的 PID 供监控使用
@@ -192,9 +175,6 @@ for i in {10..10}; do
                             echo "perf stat process $PERF_PID is no longer running (it might have ended with db_bench)."
                         fi
     
-                    done
-                    done
-                    done
                     done
                     done
                     done

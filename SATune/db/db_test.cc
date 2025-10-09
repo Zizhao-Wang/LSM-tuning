@@ -2177,6 +2177,10 @@ class ModelDB : public DB {
   }
   void CompactRange(const Slice* start, const Slice* end) override {}
 
+  LSMStateSnapshot GetLSMStateSnapshot() const override{
+    return LSMStateSnapshot{};
+  };
+
  private:
   class ModelIter : public Iterator {
    public:

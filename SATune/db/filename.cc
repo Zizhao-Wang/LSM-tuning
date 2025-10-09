@@ -76,6 +76,14 @@ std::string OldVersionDebugLogFileName(const std::string& dbname) {
   return dbname + "/VERSION_DEBUG.old";
 }
 
+std::string TuningLogFileName(const std::string& dbname) {
+  return dbname + "/TUNING_LOG";
+}
+
+std::string OldTuningLogFileName(const std::string& dbname) {
+  return dbname + "/TUNING_LOG.old";
+}
+
 // Owned filenames have the form:
 //    dbname/CURRENT
 //    dbname/LOCK

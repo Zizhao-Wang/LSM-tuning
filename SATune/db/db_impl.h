@@ -24,6 +24,7 @@
 #include "db/db_compaction_options.h"
 #include "db/l0_tuning.h" 
 #include "db/log_stats.h" 
+#include "tuning_framework/workload_monitor.h"
 
 namespace leveldb {
 
@@ -58,7 +59,6 @@ class DBImpl : public DB {
   void CompactRange(const Slice* begin, const Slice* end) override;
 
   // Extra methods (for testing) that are not in the public DB interface
-
   // Compact any files in the named level that overlap [*begin,*end]
   void TEST_CompactRange(int level, const Slice* begin, const Slice* end);
 
@@ -91,6 +91,30 @@ class DBImpl : public DB {
   // Samples are taken approximately once every config::kReadBytesPeriod
   // bytes.
   void RecordReadSample(Slice key);
+
+  LSMStateSnapshot GetLSMStateSnapshot() const override;
+
+  const LevelStallStats& GetL0StallStats() const {
+    return L0_unknown_stall_stats_;
+  }
+
+  LevelStallStats GetL0StallStatsData() {
+    return L0_unknown_stall_stats_;
+  }
+
+  CompactionOptionsAtomic* GetCompactionOptions(){
+    return &compaction_opts_atomic_;
+  }
+
+  const VersionSet* GetVersionSet() const {
+    metadata_mutex_.AssertHeld();  // thread safety
+    return versions_;
+  }
+
+  Logger* GetTuningLogger() const {
+    return options_.tuning_log_;
+  }
+  
 
  private:
 
@@ -221,7 +245,7 @@ class DBImpl : public DB {
   // --- C0 Adaptation ---
   void MaybeAdjustC0(const L0TuningStatsInCompaction* stats=nullptr /* = nullptr */);
   void RecordWriteStall(bool is_stop);
-  bool CheckAndHandleBatch(L0VarianceStats& baseline, L0VarianceStats& batch);
+  bool L0CheckAndHandleBatch(L0VarianceStats& baseline, L0VarianceStats& batch);
 
   bool c0_adaptation_enabled_;
   std::atomic<int64_t> slowdown_events_{0};
@@ -229,9 +253,12 @@ class DBImpl : public DB {
   std::atomic<int> adjustment_aggressiveness_{1};
   std::atomic<uint64_t> last_c0_adjustment_time_{0};
 
+  // --- Workload monitoring ---
+  WorkloadMonitor workload_monitor_;
+  PerformanceMonitor performance_monitor_;
+  FlushStats flush_stats_;
 
   LogAndApplyStats log_and_apply_stats_ GUARDED_BY(metadata_mutex_);
-
 
   Status NewDB();
 
@@ -305,13 +332,6 @@ class DBImpl : public DB {
     return specialKeys.find(key) != specialKeys.end();
   }
 
-  void testSpecialKeys();
-
-  void load_keys_from_CSV(const std::string& filePath);
-
-  void batch_load_keys_from_CSV(const std::string& filePath, const std::string& percentagesStr);
-
-  void batch_load_keys_from_CSV2(const std::string& filePath, const std::string& percentagesStr);
 
   bool is_hot_key(uint64_t key) {
     return hot_keys.find(key) != hot_keys.end();
@@ -374,14 +394,14 @@ class DBImpl : public DB {
   port::CondVar imms_not_empty_cv_ GUARDED_BY(imms_mutex_); 
 
   // port::Mutex metadata_mutex_;
-  port::Mutex metadata_mutex_{"metadata_mutex"};
+  mutable port::Mutex metadata_mutex_{"metadata_mutex"};
   port::CondVar compaction_cv_ GUARDED_BY(metadata_mutex_);
   int64_t l0_time=0;
 
   std::atomic<uint64_t> wait_queue_micros_{0};
   std::atomic<uint64_t> total_schedule_micros_{0};
-  std::atomic<uint64_t> total_wal_time_micros_{0};      // <--- 嫌疑人A的计时器
-  std::atomic<uint64_t> total_sync_time_micros_{0};     // <--- 嫌疑人B的计时器
+  std::atomic<uint64_t> total_wal_time_micros_{0};      
+  std::atomic<uint64_t> total_sync_time_micros_{0};     
   std::atomic<uint64_t> total_memtable_time_micros_{0};
   std::atomic<uint64_t> total_queue_wait_micros_{0};
   std::atomic<uint64_t> total_makeroom_micros_{0};
@@ -389,19 +409,11 @@ class DBImpl : public DB {
   // 当前后台compaction的层级。-1代表没有compaction在进行。
   std::atomic<int> bg_compaction_level_{-1};
 
-  struct LevelStallStats {
-    // Statistics for short (1ms) slowdowns when L0 file count is high.
-    std::atomic<uint64_t> slowdown_micros{0};
-    std::atomic<uint64_t> slowdown_count{0};
 
-    // Statistics for hard stops when L0 file count or memtable count is critical.
-    std::atomic<uint64_t> stop_micros{0};
-    std::atomic<uint64_t> stop_count{0};
-  };
   // An array to store detailed write stall statistics for each level.
   LevelStallStats level_stall_stats_[config::kNumLevels]{};
   // Statistics for stalls that occurred when no compaction was running.
-  LevelStallStats unknown_stall_stats_{};
+  LevelStallStats L0_unknown_stall_stats_{};
 
   std::atomic<bool> has_imm_;         // So bg thread can detect non-null imm_
   WritableFile* logfile_;

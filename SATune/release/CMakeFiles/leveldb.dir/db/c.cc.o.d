@@ -170,6 +170,10 @@ CMakeFiles/leveldb.dir/db/c.cc.o: \
  /usr/include/c++/11/bits/stl_multimap.h \
  /usr/include/c++/11/bits/erase_if.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/compaction_options.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/performance_profile.h \
+ /usr/include/c++/11/chrono /usr/include/c++/11/ratio \
+ /usr/include/c++/11/limits /usr/include/c++/11/ctime \
+ /usr/include/c++/11/bits/parse_numbers.h /usr/include/c++/11/atomic \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/env.h \
  /usr/include/c++/11/cstdarg \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/filter_policy.h \

@@ -185,6 +185,8 @@ CMakeFiles/leveldb.dir/db/filename.cc.o: \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/comparator.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/db.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/iterator.h \
+ /home/jeff-wang/LSM-tuning/SATune/include/leveldb/performance_profile.h \
+ /usr/include/c++/11/atomic \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/filter_policy.h \
  /home/jeff-wang/LSM-tuning/SATune/include/leveldb/table_builder.h \
  /home/jeff-wang/LSM-tuning/SATune/./util/coding.h \

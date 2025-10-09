@@ -16,22 +16,22 @@ cluster_num_kvs_map[13]="20000000 40000000 60000000 80000000 100000000"
 cluster_num_kvs_map[1]="200000000 400000000 600000000 800000000 1000000000"
 cluster_num_kvs_map[25]="200000000 400000000 600000000 800000000 1000000000"
 cluster_num_kvs_map[30]="200000000 400000000 600000000 800000000 1000000000"
-cluster_num_kvs_map[35]="200000000 400000000 600000000 800000000 1000000000"
+cluster_num_kvs_map[35]="200000000 "
 cluster_num_kvs_map[51]="200000000 400000000 600000000 800000000 1000000000"
 
 
 # 为不同的ct0值设定对应的slowdown和stop值
-slowdown_map[4]=16
-slowdown_map[8]=16
-slowdown_map[16]=20
-slowdown_map[32]=40
+slowdown_map[4]=20
+slowdown_map[8]=32
+slowdown_map[16]=40
+slowdown_map[32]=60
 slowdown_map[64]=80
 
-stop_map[4]=32
-stop_map[8]=32
-stop_map[16]=32
-stop_map[32]=74
-stop_map[64]=144
+stop_map[4]=36
+stop_map[8]=40
+stop_map[16]=55
+stop_map[32]=80
+stop_map[64]=120
 
 # Define the mapping for value_size and key_size for each cluster
 declare -A cluster_value_size_map
@@ -71,7 +71,7 @@ convert_to_billion_format() {
 
 for i in {10..10}; do
     base_num=$(($billion * $i))
-    dir1="${i}B_RocksDB_OptanePM_Twitter_PreLoad_Performance"
+    dir1="${i}B_RocksDB_OptanePM_Twitter35_PreLoad_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -81,16 +81,16 @@ for i in {10..10}; do
             stats_interva=$((num_entries / 100))
             num_entries=1000000000
 
-            for cluster_a in 30; do  # 
-                for ct0 in 4 ; do  # 
+            for cluster_a in 35; do  # 
+                for ct0 in 4 8 16; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
                 for num_kvs in ${cluster_num_kvs_map[$cluster_a]}; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 4 8 10 16 32; do
-                for blk_cache_size in 32 128 512 1024; do
-                for table_cache_size in 300 1000 5000 10000; do
+                for blk_size in 4; do
+                for blk_cache_size in 128; do
+                for table_cache_size in 1000; do
                     # buffer_size=67108864
                     # buffer_size=2097152
                     target_file_base=67108864
@@ -141,7 +141,6 @@ for i in {10..10}; do
                         --max_bytes_for_level_base=$level1_max_bytes \
                         --num=$num_kvs \
                         --block_size=$block_size_write  \
-                        --perf_level=5   \
                         --statistics=true \
                         --use_direct_reads=true \
                         --key_size=$key_size_twitter \

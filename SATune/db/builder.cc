@@ -112,8 +112,8 @@ Status BuildTable(const std::string& dbname, Env* env, const Options& options,
 
 
 
-Status BuildTable2(const std::string& dbname, Env* env, const Options& options,
-  TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total) {
+Status BuildTable2(const std::string& dbname, Env* env, const Options& options,TableCache* table_cache, 
+                      Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total, int64_t* memtable_size) {
   Status s;
   meta->file_size = 0;
   iter->SeekToFirst();
@@ -122,6 +122,7 @@ Status BuildTable2(const std::string& dbname, Env* env, const Options& options,
   int total_keys = 0;
   int unique_keys = 0;  
   int unique_key_num = 0;
+  int64_t mem_size = 0;
   std::string last_user_key_storage; // 用 string 来安全存储上一个唯一 Key 的数据
   std::vector<int> frequency_vector;
 
@@ -138,6 +139,7 @@ Status BuildTable2(const std::string& dbname, Env* env, const Options& options,
     for (; iter->Valid(); iter->Next()) {
       key = iter->key();
       total_keys++;
+      mem_size += (iter->key().size()+iter->value().size());
 
       Slice current_user_key(key.data(), key.size() - 8);
 
@@ -203,12 +205,16 @@ Status BuildTable2(const std::string& dbname, Env* env, const Options& options,
   } else {
     env->RemoveFile(fname);
   }
+
+  *memtable_size = mem_size;
+
+
   return s;
 }
 
 
 Status BuildTableWithVarianceWiMerge(const std::string& dbname, Env* env, const Options& options,
-  TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total) {
+  TableCache* table_cache, Iterator* iter, FileMetaData* meta, double* variance_output, int64_t* tlb_unique, int64_t* table_total, int64_t* memtable_size) {
   Status s;
   meta->file_size = 0;
   iter->SeekToFirst();
@@ -217,6 +223,7 @@ Status BuildTableWithVarianceWiMerge(const std::string& dbname, Env* env, const 
   int total_keys = 0;
   int unique_keys = 0;  
   int unique_key_num = 0;
+  int64_t mem_size= 0;
   std::string last_user_key_storage; // 用 string 来安全存储上一个唯一 Key 的数据
   std::vector<int> frequency_vector;
 
@@ -233,7 +240,7 @@ Status BuildTableWithVarianceWiMerge(const std::string& dbname, Env* env, const 
     for (; iter->Valid(); iter->Next()) {
       key = iter->key();
       total_keys++;
-
+      mem_size += (iter->key().size()+iter->value().size());
       Slice current_user_key(key.data(), key.size() - 8);
 
       if (last_user_key_storage.empty() || Slice(last_user_key_storage).compare(current_user_key) != 0) {
@@ -315,6 +322,8 @@ Status BuildTableWithVarianceWiMerge(const std::string& dbname, Env* env, const 
 
     *variance_output = mean_sq - std::pow(mean, 2); // 方差 = E[X^2] - (E[X])^2
   }
+  *memtable_size = mem_size;
+  // fprintf(stdout,"The data size in the memtable is: %.3f\n",mem_size/1048576.0);
 
   if (s.ok() && meta->file_size > 0) {
     // Keep it
@@ -446,7 +455,7 @@ Status BuildTableWithVarianceWoMerge(const std::string& dbname, Env* env, const 
 
 
 Status BuildTableWithDiscardCount(const std::string& dbname, Env* env,const Options& options,
-      TableCache* table_cache, Iterator* iter,FileMetaData* meta,int* discarded_count_output) { // 输出参数：可抛弃数量
+      TableCache* table_cache, Iterator* iter,FileMetaData* meta,int* discarded_count_output) { // 输出参数：抛弃数量
   Status s;
   meta->file_size = 0;
   iter->SeekToFirst();

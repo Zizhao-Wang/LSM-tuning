@@ -250,6 +250,19 @@ db_bench/fast:
 .PHONY : db_bench/fast
 
 #=============================================================================
+# Target rules for targets named db_bench_sqlite3
+
+# Build rule for target.
+db_bench_sqlite3: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 db_bench_sqlite3
+.PHONY : db_bench_sqlite3
+
+# fast build rule for target.
+db_bench_sqlite3/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/build
+.PHONY : db_bench_sqlite3/fast
+
+#=============================================================================
 # Target rules for targets named gmock
 
 # Build rule for target.
@@ -350,6 +363,30 @@ benchmarks/db_bench.s: benchmarks/db_bench.cc.s
 benchmarks/db_bench.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/benchmarks/db_bench.cc.s
 .PHONY : benchmarks/db_bench.cc.s
+
+benchmarks/db_bench_sqlite3.o: benchmarks/db_bench_sqlite3.cc.o
+.PHONY : benchmarks/db_bench_sqlite3.o
+
+# target to build an object file
+benchmarks/db_bench_sqlite3.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/benchmarks/db_bench_sqlite3.cc.o
+.PHONY : benchmarks/db_bench_sqlite3.cc.o
+
+benchmarks/db_bench_sqlite3.i: benchmarks/db_bench_sqlite3.cc.i
+.PHONY : benchmarks/db_bench_sqlite3.i
+
+# target to preprocess a source file
+benchmarks/db_bench_sqlite3.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/benchmarks/db_bench_sqlite3.cc.i
+.PHONY : benchmarks/db_bench_sqlite3.cc.i
+
+benchmarks/db_bench_sqlite3.s: benchmarks/db_bench_sqlite3.cc.s
+.PHONY : benchmarks/db_bench_sqlite3.s
+
+# target to generate assembly for a file
+benchmarks/db_bench_sqlite3.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/benchmarks/db_bench_sqlite3.cc.s
+.PHONY : benchmarks/db_bench_sqlite3.cc.s
 
 db/autocompact_test.o: db/autocompact_test.cc.o
 .PHONY : db/autocompact_test.o
@@ -1335,6 +1372,30 @@ table/two_level_iterator.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/table/two_level_iterator.cc.s
 .PHONY : table/two_level_iterator.cc.s
 
+tuning_framework/auto_tuner.o: tuning_framework/auto_tuner.cc.o
+.PHONY : tuning_framework/auto_tuner.o
+
+# target to build an object file
+tuning_framework/auto_tuner.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/tuning_framework/auto_tuner.cc.o
+.PHONY : tuning_framework/auto_tuner.cc.o
+
+tuning_framework/auto_tuner.i: tuning_framework/auto_tuner.cc.i
+.PHONY : tuning_framework/auto_tuner.i
+
+# target to preprocess a source file
+tuning_framework/auto_tuner.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/tuning_framework/auto_tuner.cc.i
+.PHONY : tuning_framework/auto_tuner.cc.i
+
+tuning_framework/auto_tuner.s: tuning_framework/auto_tuner.cc.s
+.PHONY : tuning_framework/auto_tuner.s
+
+# target to generate assembly for a file
+tuning_framework/auto_tuner.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/tuning_framework/auto_tuner.cc.s
+.PHONY : tuning_framework/auto_tuner.cc.s
+
 util/arena.o: util/arena.cc.o
 .PHONY : util/arena.o
 
@@ -1749,6 +1810,7 @@ util/histogram.o: util/histogram.cc.o
 # target to build an object file
 util/histogram.cc.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/histogram.cc.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/util/histogram.cc.o
 .PHONY : util/histogram.cc.o
 
 util/histogram.i: util/histogram.cc.i
@@ -1757,6 +1819,7 @@ util/histogram.i: util/histogram.cc.i
 # target to preprocess a source file
 util/histogram.cc.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/histogram.cc.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/util/histogram.cc.i
 .PHONY : util/histogram.cc.i
 
 util/histogram.s: util/histogram.cc.s
@@ -1765,6 +1828,7 @@ util/histogram.s: util/histogram.cc.s
 # target to generate assembly for a file
 util/histogram.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/histogram.cc.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/util/histogram.cc.s
 .PHONY : util/histogram.cc.s
 
 util/independent_cache.o: util/independent_cache.cc.o
@@ -1887,6 +1951,30 @@ util/options.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/options.cc.s
 .PHONY : util/options.cc.s
 
+util/performance_profile.o: util/performance_profile.cc.o
+.PHONY : util/performance_profile.o
+
+# target to build an object file
+util/performance_profile.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/performance_profile.cc.o
+.PHONY : util/performance_profile.cc.o
+
+util/performance_profile.i: util/performance_profile.cc.i
+.PHONY : util/performance_profile.i
+
+# target to preprocess a source file
+util/performance_profile.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/performance_profile.cc.i
+.PHONY : util/performance_profile.cc.i
+
+util/performance_profile.s: util/performance_profile.cc.s
+.PHONY : util/performance_profile.s
+
+# target to generate assembly for a file
+util/performance_profile.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/leveldb.dir/build.make CMakeFiles/leveldb.dir/util/performance_profile.cc.s
+.PHONY : util/performance_profile.cc.s
+
 util/status.o: util/status.cc.o
 .PHONY : util/status.o
 
@@ -1944,6 +2032,7 @@ util/testutil.cc.o:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/c_test.dir/build.make CMakeFiles/c_test.dir/util/testutil.cc.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/env_posix_test.dir/build.make CMakeFiles/env_posix_test.dir/util/testutil.cc.o
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/testutil.cc.o
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/util/testutil.cc.o
 .PHONY : util/testutil.cc.o
 
 util/testutil.i: util/testutil.cc.i
@@ -1955,6 +2044,7 @@ util/testutil.cc.i:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/c_test.dir/build.make CMakeFiles/c_test.dir/util/testutil.cc.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/env_posix_test.dir/build.make CMakeFiles/env_posix_test.dir/util/testutil.cc.i
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/testutil.cc.i
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/util/testutil.cc.i
 .PHONY : util/testutil.cc.i
 
 util/testutil.s: util/testutil.cc.s
@@ -1966,6 +2056,7 @@ util/testutil.cc.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/c_test.dir/build.make CMakeFiles/c_test.dir/util/testutil.cc.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/env_posix_test.dir/build.make CMakeFiles/env_posix_test.dir/util/testutil.cc.s
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench.dir/build.make CMakeFiles/db_bench.dir/util/testutil.cc.s
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/db_bench_sqlite3.dir/build.make CMakeFiles/db_bench_sqlite3.dir/util/testutil.cc.s
 .PHONY : util/testutil.cc.s
 
 util/trace.o: util/trace.cc.o
@@ -2009,6 +2100,7 @@ help:
 	@echo "... benchmark_main"
 	@echo "... c_test"
 	@echo "... db_bench"
+	@echo "... db_bench_sqlite3"
 	@echo "... env_posix_test"
 	@echo "... gmock"
 	@echo "... gmock_main"
@@ -2020,6 +2112,9 @@ help:
 	@echo "... benchmarks/db_bench.o"
 	@echo "... benchmarks/db_bench.i"
 	@echo "... benchmarks/db_bench.s"
+	@echo "... benchmarks/db_bench_sqlite3.o"
+	@echo "... benchmarks/db_bench_sqlite3.i"
+	@echo "... benchmarks/db_bench_sqlite3.s"
 	@echo "... db/autocompact_test.o"
 	@echo "... db/autocompact_test.i"
 	@echo "... db/autocompact_test.s"
@@ -2143,6 +2238,9 @@ help:
 	@echo "... table/two_level_iterator.o"
 	@echo "... table/two_level_iterator.i"
 	@echo "... table/two_level_iterator.s"
+	@echo "... tuning_framework/auto_tuner.o"
+	@echo "... tuning_framework/auto_tuner.i"
+	@echo "... tuning_framework/auto_tuner.s"
 	@echo "... util/arena.o"
 	@echo "... util/arena.i"
 	@echo "... util/arena.s"
@@ -2212,6 +2310,9 @@ help:
 	@echo "... util/options.o"
 	@echo "... util/options.i"
 	@echo "... util/options.s"
+	@echo "... util/performance_profile.o"
+	@echo "... util/performance_profile.i"
+	@echo "... util/performance_profile.s"
 	@echo "... util/status.o"
 	@echo "... util/status.i"
 	@echo "... util/status.s"

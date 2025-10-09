@@ -59,23 +59,20 @@ convert_to_billion_format() {
     fi
 }
 
-for i in {10..10}; do
-    base_num=$(($billion * $i))
-    dir1="${i}B_SATune_SATASSD_TwitterCluster${current_cluster_a}_PreLoad_Performance"
+for current_cluster_a in 30 35 ; do
+    dir1="10B_SATune_SATASSD_TwitterCluster${current_cluster_a}_PreLoad_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
-        for value_size in 128; do
-            num_entries=$(($base_num * $BASE_VALUE_SIZE / $value_size))
-            stats_interva=$((num_entries / 100))
-            num_entries=1000000000
+        num_entries=1000000000
+        stats_interva=$((num_entries / 100))
 
             for cluster_a in $current_cluster_a; do  # 
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
-                for num_kvs in 200000000 400000000 600000000 800000000 1000000000; do
+                for num_kvs in 20000000 ; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
                 for blk_size in 1 4 8 10 16 32; do
@@ -119,7 +116,6 @@ for i in {10..10}; do
                     # 输出slowdown_value和stop_value的匹配情况
                     echo "For ct0=$ct0, slowdown_value=$slowdown_value, stop_value=$stop_value"
 
-                    echo "base_num: $base_num"
                     echo "num_entries: $num_entries"
                     echo "value_size:$value_size_twitter"
                     echo "key_size:$key_size_twitter"
@@ -185,7 +181,6 @@ for i in {10..10}; do
                             echo "perf stat process $PERF_PID is no longer running (it might have ended with db_bench)."
                         fi
     
-                    done
                     done
                     done
                     done
