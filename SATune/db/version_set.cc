@@ -15,11 +15,11 @@
 
 #include "leveldb/env.h"
 #include "leveldb/table_builder.h"
-
 #include "table/merger.h"
 #include "table/two_level_iterator.h"
 #include "util/coding.h"
 #include "util/logging.h"
+
 
 namespace leveldb {
 
@@ -698,6 +698,7 @@ class VersionSet::Builder {
   // Initialize a builder with the files from *base and other info from *vset
   Builder(VersionSet* vset, Version* base) : vset_(vset), base_(base) {
     base_->Ref();
+    builder_version_ref_count.fetch_add(1);
     BySmallestKey cmp;
     cmp.internal_comparator = &vset_->icmp_;
     for (int level = 0; level < config::kNumLevels; level++) {
@@ -724,6 +725,7 @@ class VersionSet::Builder {
       }
     }
     base_->Unref();
+    builder_version_unref_count.fetch_add(1);
   }
 
   // Apply all of the edits in *edit to the current state.
@@ -854,15 +856,154 @@ VersionSet::VersionSet(const std::string& dbname, const Options* options,
       dummy_versions_(this,0),
       current_(nullptr),
       next_version_id_(1),
-      stats_(stats) {
+      stats_(stats),
+      num_live_levels_(0)  {
   AppendVersion(new Version(this, next_version_id_.fetch_add(1, std::memory_order_relaxed)));
 }
 
+// VersionSet::~VersionSet() {
+//   current_->Unref();
+//   assert(dummy_versions_.next_ == &dummy_versions_);  // List must be empty
+//   delete descriptor_log_;
+//   delete descriptor_file_;
+// }
+
 VersionSet::~VersionSet() {
+  fprintf(stderr, "\n========================================\n");
+  fprintf(stderr, "=== VersionSet Destructor Called ===\n");
+  fprintf(stderr, "========================================\n");
+  
+  // 输出 current_ 的引用计数
+  fprintf(stderr, "Current version refs before Unref: %d\n", current_->refs_);
+  
+  // 输出所有计数器的统计
+  fprintf(stderr, "\n--- Ref/Unref Statistics ---\n");
+  
+  fprintf(stderr, "1. DBImpl::Get:\n");
+  fprintf(stderr, "   Refs:   %ld\n", g_version_ref_count.load());
+  fprintf(stderr, "   Unrefs: %ld\n", g_version_unref_count.load());
+  fprintf(stderr, "   Diff:   %ld %s\n", 
+          g_version_ref_count.load() - g_version_unref_count.load(),
+          (g_version_ref_count.load() != g_version_unref_count.load()) ? "<-- LEAK!" : "");
+  
+  fprintf(stderr, "2. Builder (Compaction):\n");
+  fprintf(stderr, "   Refs:   %ld\n", builder_version_ref_count.load());
+  fprintf(stderr, "   Unrefs: %ld\n", builder_version_unref_count.load());
+  fprintf(stderr, "   Diff:   %ld %s\n", 
+          builder_version_ref_count.load() - builder_version_unref_count.load(),
+          (builder_version_ref_count.load() != builder_version_unref_count.load()) ? "<-- LEAK!" : "");
+  
+  fprintf(stderr, "3. PickCompaction:\n");
+  fprintf(stderr, "   Refs:   %ld\n", pickcompaction_version_ref_count.load());
+  fprintf(stderr, "   Unrefs: %ld\n", pickcompaction_version_unref_count.load());
+  fprintf(stderr, "   Diff:   %ld %s\n", 
+          pickcompaction_version_ref_count.load() - pickcompaction_version_unref_count.load(),
+          (pickcompaction_version_ref_count.load() != pickcompaction_version_unref_count.load()) ? "<-- LEAK!" : "");
+  
+  fprintf(stderr, "4. Append (LogAndApply):\n");
+  fprintf(stderr, "   Refs:   %ld\n", append_version_ref_count.load());
+  fprintf(stderr, "   Unrefs: %ld\n", append_version_unref_count.load());
+  fprintf(stderr, "   Diff:   %ld %s\n", 
+          append_version_ref_count.load() - append_version_unref_count.load(),
+          (append_version_ref_count.load() != append_version_unref_count.load()) ? "<-- LEAK!" : "");
+  
+  fprintf(stderr, "5. MemTable operations:\n");
+  fprintf(stderr, "   Refs:   %ld\n", mem_version_ref_count.load());
+  fprintf(stderr, "   Unrefs: %ld\n", mem_version_unref_count.load());
+  fprintf(stderr, "   Diff:   %ld %s\n", 
+          mem_version_ref_count.load() - mem_version_unref_count.load(),
+          (mem_version_ref_count.load() != mem_version_unref_count.load()) ? "<-- LEAK!" : "");
+  
+  fprintf(stderr, "6. ApproximateOffsetOf:\n");
+  fprintf(stderr, "   Refs:   %ld\n", approximate_version_ref_count.load());
+  fprintf(stderr, "   Unrefs: %ld\n", approximate_version_unref_count.load());
+  fprintf(stderr, "   Diff:   %ld %s\n", 
+          approximate_version_ref_count.load() - approximate_version_unref_count.load(),
+          (approximate_version_ref_count.load() != approximate_version_unref_count.load()) ? "<-- LEAK!" : "");
+  
+  // 计算总的 Ref/Unref
+  int64_t total_refs = g_version_ref_count.load() + 
+                       builder_version_ref_count.load() + 
+                       pickcompaction_version_ref_count.load() + 
+                       append_version_ref_count.load() + 
+                       mem_version_ref_count.load() + 
+                       approximate_version_ref_count.load();
+  
+  int64_t total_unrefs = g_version_unref_count.load() + 
+                         builder_version_unref_count.load() + 
+                         pickcompaction_version_unref_count.load() + 
+                         append_version_unref_count.load() + 
+                         mem_version_unref_count.load() + 
+                         approximate_version_unref_count.load();
+  
+  fprintf(stderr, "\n--- Total Statistics ---\n");
+  fprintf(stderr, "Total tracked Refs:   %ld\n", total_refs);
+  fprintf(stderr, "Total tracked Unrefs: %ld\n", total_unrefs);
+  fprintf(stderr, "Total Diff:           %ld\n", total_refs - total_unrefs);
+  
+  // 检查 Version 链表
+  fprintf(stderr, "\n--- Version List Check ---\n");
+  if (dummy_versions_.next_ == &dummy_versions_) {
+    fprintf(stderr, "Version list is CLEAN (empty)\n");
+  } else {
+    fprintf(stderr, "!!! Version list is NOT EMPTY !!!\n");
+    fprintf(stderr, "Leaked versions in the list:\n");
+    
+    int leak_count = 0;
+    Version* v = dummy_versions_.next_;
+    while (v != &dummy_versions_) {
+      leak_count++;
+      fprintf(stderr, "  [%d] Version %p, refs=%d\n", 
+              leak_count, (void*)v, v->refs_);
+      v = v->next_;
+      
+      if (leak_count > 20) {
+        fprintf(stderr, "  ... (more than 20 leaks, stopping output)\n");
+        break;
+      }
+    }
+    fprintf(stderr, "Total leaked versions: %d\n", leak_count);
+  }
+  
+  fprintf(stderr, "\n--- Now calling current_->Unref() ---\n");
   current_->Unref();
+  fprintf(stderr, "current_->Unref() completed\n");
+  
+  fprintf(stderr, "\n--- After current_->Unref() ---\n");
+  if (dummy_versions_.next_ == &dummy_versions_) {
+    fprintf(stderr, "Version list is now CLEAN\n");
+  } else {
+    fprintf(stderr, "!!! Version list STILL NOT EMPTY after current_->Unref() !!!\n");
+    fprintf(stderr, "This means there are OTHER versions leaked, not just current_\n");
+    
+    int remaining_count = 0;
+    Version* v = dummy_versions_.next_;
+    while (v != &dummy_versions_) {
+      remaining_count++;
+      fprintf(stderr, "  [%d] Remaining Version %p, refs=%d\n", 
+              remaining_count, (void*)v, v->refs_);
+      v = v->next_;
+      
+      if (remaining_count > 20) {
+        fprintf(stderr, "  ... (stopping output)\n");
+        break;
+      }
+    }
+  }
+  
+  fprintf(stderr, "\n========================================\n");
+  fprintf(stderr, "=== Assertion Check ===\n");
+  fprintf(stderr, "========================================\n");
+  
   assert(dummy_versions_.next_ == &dummy_versions_);  // List must be empty
+  
+  fprintf(stderr, "Assertion passed! Continuing cleanup...\n");
+  
   delete descriptor_log_;
   delete descriptor_file_;
+  
+  fprintf(stderr, "VersionSet destructor completed successfully\n");
+  fprintf(stderr, "========================================\n\n");
 }
 
 void VersionSet::AppendVersion(Version* v) {
@@ -871,9 +1012,11 @@ void VersionSet::AppendVersion(Version* v) {
   assert(v != current_);
   if (current_ != nullptr) {
     current_->Unref();
+    append_version_unref_count.fetch_add(1);
   }
   current_ = v;
   v->Ref();
+  append_version_ref_count.fetch_add(1);
 
   // Append to linked list
   v->prev_ = dummy_versions_.prev_;
@@ -1576,6 +1719,7 @@ Compaction* VersionSet::PickCompaction() {
   c->input_version_ = current_;
   // 增加input_version_的引用计数，确保在压缩过程中该版本数据不会被删除或修改。
   c->input_version_->Ref();
+  pickcompaction_version_ref_count.fetch_add(1);
 
   // Files in level 0 may overlap each other, so pick up all overlapping ones
   if (level == 0) {
@@ -1804,6 +1948,7 @@ Compaction::Compaction(const Options* options, int level)
 Compaction::~Compaction() {
   if (input_version_ != nullptr) {
     input_version_->Unref();
+    pickcompaction_version_unref_count.fetch_add(1);
   }
 }
 
@@ -1873,6 +2018,7 @@ bool Compaction::ShouldStopBefore(const Slice& internal_key) {
 void Compaction::ReleaseInputs() {
   if (input_version_ != nullptr) {
     input_version_->Unref();
+    pickcompaction_version_unref_count.fetch_add(1);
     input_version_ = nullptr;
   }
 }

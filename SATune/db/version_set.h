@@ -18,6 +18,7 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <atomic>
 
 #include "db/dbformat.h"
 #include "db/version_edit.h"
@@ -27,6 +28,18 @@
 #include "db/log_stats.h"
 #include "include/leveldb/performance_profile.h"
 
+static std::atomic<int64_t> builder_version_ref_count{0};
+static std::atomic<int64_t> builder_version_unref_count{0};
+static std::atomic<int64_t> pickcompaction_version_ref_count{0};
+static std::atomic<int64_t> pickcompaction_version_unref_count{0};
+static std::atomic<int64_t> append_version_ref_count{0};
+static std::atomic<int64_t> append_version_unref_count{0};
+static std::atomic<int64_t> g_version_ref_count{0};
+static std::atomic<int64_t> g_version_unref_count{0};  
+static std::atomic<int64_t> mem_version_ref_count{0};
+static std::atomic<int64_t> mem_version_unref_count{0};
+static std::atomic<int64_t> approximate_version_ref_count{0};
+static std::atomic<int64_t> approximate_version_unref_count{0};
 
 namespace leveldb {
 
@@ -207,6 +220,8 @@ class VersionSet {
 
   size_t ComputeBlockSizeForLevel(int level, size_t blocks_per_sst = 1024) const;
 
+  int NumLiveLevels() const { return num_live_levels_; }
+
   // Allocate and return a new file number
   uint64_t NewFileNumber() { return next_file_number_++; }
 
@@ -217,6 +232,17 @@ class VersionSet {
     if (next_file_number_ == file_number + 1) {
       next_file_number_ = file_number;
     }
+  }
+
+  void MaybeUpdateNumLiveLevels(int compaction_level) {
+    int new_live_levels = compaction_level + 2; // level+1的层数是level+2
+    if (new_live_levels > num_live_levels_) {
+      num_live_levels_ = new_live_levels;
+    }
+  }
+
+  const int GetActivaLevelsInLSM() const{
+    return num_live_levels_;
   }
 
   // Return the number of Table files at the specified level.
@@ -279,7 +305,7 @@ class VersionSet {
 
   int LevelNeedsCompaction() const {
     Version* v = current_;
-    return v->compaction_level_ == 0;
+    return v->compaction_level_;
   }
 
   // Add all files listed in any live version to *live.
@@ -364,6 +390,7 @@ class VersionSet {
   uint64_t last_sequence_;
   uint64_t log_number_;
   uint64_t prev_log_number_;  // 0 or backing store for memtable being compacted
+  int num_live_levels_;
 
   // Opened lazily
   WritableFile* descriptor_file_;

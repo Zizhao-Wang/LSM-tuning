@@ -154,14 +154,8 @@ for i in 40; do
                     #     continue
                     # fi
 
-                    if [ -f "$compaction_log_file" ]; then
-                        # 如果存在，打印一条信息并强制删除它
-                        echo "Log file $compaction_log_file already exists. Deleting it now."
-                        rm -f "$compaction_log_file"
-                    fi
-
                     # 创建相应的目录
-                    db_dir="/mntdisk/SATune10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                    db_dir="/mnt/db_test2/SATune10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
 
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
@@ -178,7 +172,7 @@ for i in 40; do
                         rm -rf "${tuning_log_dir:?}/"*
                     fi
 
-                    echo fb0-=0-= | sudo -S bash -c 'echo 1 > /proc/sys/vm/drop_caches'
+                    # echo fb0-=0-= | sudo -S bash -c 'echo 1 > /proc/sys/vm/drop_caches'
                     # 获取对应ct0的slowdown和stop值
                     slowdown_value=${slowdown_map[$ct0]}
                     stop_value=${stop_map[$ct0]}

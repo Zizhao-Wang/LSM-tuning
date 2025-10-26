@@ -16,7 +16,9 @@
 #include <string>
 #include <chrono>
 #include <vector>
-#include <inttypes.h>  
+#include <inttypes.h>
+#include <atomic>
+
 
 #include "db/builder.h"
 #include "db/db_iter.h"
@@ -42,6 +44,8 @@
 #include "util/mutexlock.h"
 #include "leveldb/performance_profile.h"
 #include "tuning_framework/auto_tuner.h"
+
+
 
 namespace leveldb {
 
@@ -173,7 +177,7 @@ DBImpl::DBImpl(const Options& raw_options, const std::string& dbname)
       compaction_opts_atomic_(options_.compaction_opts),
       owns_info_log_(options_.info_log != raw_options.info_log),
       owns_cache_(options_.block_cache != raw_options.block_cache),
-      is_first(false),
+      compaction_count_(0),
       dbname_(dbname),
       hot_file_path(raw_options.hot_file_path),
       percentagesStr(raw_options.percentages),
@@ -686,8 +690,7 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   meta.number = versions_->NewFileNumber();
   pending_outputs_.insert(meta.number);
   Iterator* iter = mem->NewIterator();
-  Log(options_.info_log, "Level-0 table #%llu: started",
-      (unsigned long long)meta.number);
+  Log(options_.info_log, "Level-0 table #%llu: started", (unsigned long long)meta.number);
   double table_variance=0.0;
   int64_t table_unique=0;
   int64_t table_total_keys=0;
@@ -770,7 +773,11 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   flush_stats_.actual_bytes_written += meta.file_size;
   flush_stats_.user_bytes_written += total_memtable_size;
 
-
+  TableStats ts;
+  ts.mu = static_cast<double>(table_total_keys) / table_unique;
+  ts.var = table_variance;
+  ts.n = table_unique; 
+  flush_stats_.recent_tables_.push_back(ts);
 
   // newly added source codes
   // new_LeveldataStats new_stats;
@@ -778,12 +785,6 @@ Status DBImpl::WriteLevel0Table(MemTable* mem, VersionEdit* edit,
   // new_stats.bytes_written = meta.file_size;
   // new_stats.user_bytes_written = meta.file_size;
   // level_stats_[level].Add(new_stats);
-  
-  // if(!is_first){
-  //   batch_load_keys_from_CSV(hot_file_path, percentagesStr);
-  //   is_first = true;
-  // }
-  // fprintf(stderr, "bytes into level %d: %lu\n",level,stats_[0].bytes_written);
 
   return s;
 }
@@ -796,8 +797,10 @@ void DBImpl::CompactMemTable() {
   VersionEdit edit;
   Version* base = versions_->current();
   base->Ref();
+  mem_version_ref_count.fetch_add(1);
   Status s = WriteLevel0Table(imm_, &edit, base);
   base->Unref();
+  mem_version_unref_count.fetch_add(1);
 
   if (s.ok() && shutting_down_.load(std::memory_order_acquire)) {
     s = Status::IOError("Deleting DB during memtable compaction");
@@ -834,8 +837,10 @@ void DBImpl::CompactMemTable(MemTable* mem_to_deal) {
   VersionEdit edit;
   Version* base = versions_->current();
   base->Ref();
+  mem_version_ref_count.fetch_add(1);
   Status s = WriteLevel0Table(mem_to_deal, &edit, base);
   base->Unref();
+  mem_version_unref_count.fetch_add(1);
 
   if (s.ok() && shutting_down_.load(std::memory_order_acquire)) {
     s = Status::IOError("Deleting DB during memtable compaction");
@@ -1068,15 +1073,44 @@ void DBImpl::MaybeScheduleCompaction(bool already_locked) {
 }
 
 
+
 void DBImpl::BGWork(void* db) {
   reinterpret_cast<DBImpl*>(db)->BackgroundCall();
 }
 
+/**
+ * @brief Perform performance tuning logic around compaction.
+ * 
+ * This method encapsulates batch checking, L0 recording control,
+ * pending tuning application, and version re-finalization.
+ * 
+ * @param compacted_level The compaction level being processed.
+ * @param before_compaction Whether this call occurs before (true) or after (false) compaction.
+ */
+void DBImpl::HandlePerformanceTuning(int compacted_level, bool before_compaction) {
+  performance_monitor_.CheckAndHandleBatch(this, compacted_level, true);
+
+  if (performance_monitor_.GetTuningRecords().CheckAndPauseL0Recording()) {
+    enable_l0_overflow_recording_.store(false, std::memory_order_relaxed);
+  }
+
+  if (performance_monitor_.GetTuningRecords().has_pending_changes) {
+    performance_monitor_.ApplyTuningWithExemption(this);
+  }
+
+  versions_->RefinalizeCurrentVersion();
+
+  fprintf(stderr,"[Compaction Thread]: Performance tuning %s compaction completed (level=%d, count=%lu)\n",
+    before_compaction ? "before" : "after",compacted_level, compaction_count_);
+}
+
+
+
 void DBImpl::BackgroundCall() {
 
   while (!shutting_down_.load(std::memory_order_acquire)) {
-    // 2. 检查是否有工作可做。如果没有，就等待。
-    //    使用 while 循环可以防止“虚假唤醒”，确保醒来后条件真的满足。
+    // 检查是否有工作可做。如果没有，就等待。
+    // 使用 while 循环可以防止“虚假唤醒”，确保醒来后条件真的满足。
     metadata_mutex_.Lock();
     while (!versions_->NeedsCompaction() && !shutting_down_.load(std::memory_order_acquire) && bg_error_.ok()) {
       // fprintf(stderr, "[Compaction Thread]: No work to do, going to wait...\n");
@@ -1090,19 +1124,35 @@ void DBImpl::BackgroundCall() {
       break;
     }
 
-    // we need to move these statements
+    /* =======================================================
+    * [2] PREPARE COMPACTION CONTEXT
+    * ======================================================= */
     int compacted_level = versions_->LevelNeedsCompaction();
     bg_compaction_level_.store(compacted_level, std::memory_order_relaxed);
 
+    /* =======================================================
+     * [3] PERFORMANCE TUNING LOGIC (PRE-COMPACTION)
+     * Only execute before compaction if this is NOT the first one.
+    * ======================================================= */
+    if(compaction_count_ > 0){
+      HandlePerformanceTuning(compacted_level, /*before_compaction=*/true);
+    }
     // performance_monitor_.CheckAndHandleBatch(this,compacted_level, true);
+    // if(performance_monitor_.GetTuningRecords().CheckAndPauseL0Recording()){
+    //   enable_l0_overflow_recording_.store(false, std::memory_order_relaxed);
+    // }
+    // //apply the changes if have
+    // if (performance_monitor_.GetTuningRecords().has_pending_changes) {
+    //   performance_monitor_.ApplyTuningWithExemption(this);
+    // } 
     // versions_->RefinalizeCurrentVersion();
+    
+    
     if (!versions_->NeedsCompaction()) {
-      // 不再需要 compaction 了
       fprintf(stderr, "[Compaction Thread]: After tuning in this Batch, compaction no longer needed\n");
       metadata_mutex_.Unlock();
-      continue;  // 回到循环开始，重新等待
-    }
-
+      continue;  
+    }  
     metadata_mutex_.Unlock();
     // fprintf(stderr, "[Compaction Thread]: ---> Starting a major compaction.\n");
     running_background_threads_.fetch_add(1, std::memory_order_relaxed);
@@ -1110,11 +1160,17 @@ void DBImpl::BackgroundCall() {
     {
       MutexLock l(&metadata_mutex_);
       BackgroundCompaction();
+      compaction_count_++;
 
-      //apply the changes if have
-      if (performance_monitor_.GetTuningRecords().has_pending_changes) {
-        performance_monitor_.ApplyTuningWithExemption(this);
-      } 
+      if (compaction_count_ == 1) {
+        HandlePerformanceTuning(compacted_level, /*before_compaction=*/false);
+      }
+
+      // Restore recording "overflows" after compaction completes
+      if (!enable_l0_overflow_recording_.load(std::memory_order_relaxed)) {
+        enable_l0_overflow_recording_.store(true, std::memory_order_relaxed);
+      }
+      performance_monitor_.UpdateLevelCreation(bg_compaction_level_);
     }
     
     // fprintf(stderr, "[Compaction Thread]: <--- Finished a major compaction.\n");
@@ -1208,6 +1264,7 @@ void DBImpl::BackgroundCompaction() {
     if(c->level() == 0){
       performance_monitor_.set_first_l0_compaction();
     }
+    versions_->MaybeUpdateNumLiveLevels(c->level());
     if (!status.ok()) {
       RecordBackgroundError(status);
     }
@@ -1895,6 +1952,7 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key, std::string* va
       MutexLock l(&metadata_mutex_);
       current = versions_->current();
       current->Ref();
+      g_version_ref_count.fetch_add(1);
     }
 
     bool have_stat_update = false;
@@ -1934,10 +1992,8 @@ Status DBImpl::Get(const ReadOptions& options, const Slice& key, std::string* va
     // releasing the locked resources
     {
       MutexLock l(&metadata_mutex_);
-      // if (have_stat_update && current->UpdateStats(stats)) {
-      //   MaybeScheduleCompaction();
-      // }
       current->Unref();
+      g_version_unref_count.fetch_add(1);
     }
     
     mem->Unref();
@@ -2182,7 +2238,9 @@ Status DBImpl::MakeRoomForWrite(bool force) {
                  compaction_opts_atomic_.level0_stop_writes_trigger.load(std::memory_order_relaxed)) {
         needs_stop = true;
       }
-      L0_unknown_stall_stats_.RecordL0Exceed(num_l0_files, l0_trigger);
+      if(enable_l0_overflow_recording_.load(std::memory_order_relaxed)){
+        L0_unknown_stall_stats_.RecordL0Exceed(num_l0_files, l0_trigger);
+      }
     } 
     
     if (needs_slowdown) {
@@ -2238,10 +2296,11 @@ Status DBImpl::MakeRoomForWrite(bool force) {
         Log(options_.info_log, "Too many immutable memtables; waiting...\n");
         // fprintf(stderr,"We are waiting! imms_queue_size=%ld\n", imms_queue_size_.load(std::memory_order_relaxed));
         auto wait_start = std::chrono::high_resolution_clock::now();
-          flush_work_finished_signal_.Wait();
+        flush_work_finished_signal_.Wait();
         auto wait_end = std::chrono::high_resolution_clock::now();
         auto wait_duration = std::chrono::duration_cast<std::chrono::microseconds>(wait_end - wait_start).count();
-        wait_queue_micros_.fetch_add(wait_duration, std::memory_order_relaxed);
+        L0_unknown_stall_stats_.total_slow_or_stop_time.fetch_add(wait_duration, std::memory_order_relaxed);
+        // wait_queue_micros_.fetch_add(wait_duration, std::memory_order_relaxed);
         // fprintf(stderr,"Waiting finished! imms_queue_size=%ld\n", imms_queue_size_.load(std::memory_order_relaxed));
       }
       
@@ -2600,6 +2659,7 @@ void DBImpl::GetApproximateSizes(const Range* range, int n, uint64_t* sizes) {
   MutexLock l(&mutex_);
   Version* v = versions_->current();
   v->Ref();
+  approximate_version_ref_count.fetch_add(1);
 
   for (int i = 0; i < n; i++) {
     // Convert user_key into a corresponding internal key.
@@ -2611,6 +2671,7 @@ void DBImpl::GetApproximateSizes(const Range* range, int n, uint64_t* sizes) {
   }
 
   v->Unref();
+  approximate_version_unref_count.fetch_add(1);
 }
 
 // Default implementations of convenience methods that subclasses of DB

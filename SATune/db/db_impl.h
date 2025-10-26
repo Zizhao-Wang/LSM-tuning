@@ -114,6 +114,10 @@ class DBImpl : public DB {
   Logger* GetTuningLogger() const {
     return options_.tuning_log_;
   }
+
+  FlushStats* GetFlushStats() {
+    return &flush_stats_;
+  }
   
 
  private:
@@ -253,10 +257,14 @@ class DBImpl : public DB {
   std::atomic<int> adjustment_aggressiveness_{1};
   std::atomic<uint64_t> last_c0_adjustment_time_{0};
 
+  std::atomic<bool> enable_l0_overflow_recording_{true};
+
   // --- Workload monitoring ---
   WorkloadMonitor workload_monitor_;
   PerformanceMonitor performance_monitor_;
   FlushStats flush_stats_;
+
+
 
   LogAndApplyStats log_and_apply_stats_ GUARDED_BY(metadata_mutex_);
 
@@ -304,6 +312,7 @@ class DBImpl : public DB {
   static void BGWork(void* db);
   static void BGWork_Flush(void* db);
 
+  void HandlePerformanceTuning(int compacted_level, bool before_compaction);
   void BackgroundCall();
   void FlushCall();
 
@@ -408,7 +417,13 @@ class DBImpl : public DB {
 
   // 当前后台compaction的层级。-1代表没有compaction在进行。
   std::atomic<int> bg_compaction_level_{-1};
-
+  /**
+   * @brief Counts how many major compactions have been performed.
+   * 
+   * Used to determine whether the current compaction is the very first one.
+   * If compaction_count_ == 0, the system is still in its initialization phase.
+   */
+  uint64_t compaction_count_;
 
   // An array to store detailed write stall statistics for each level.
   LevelStallStats level_stall_stats_[config::kNumLevels]{};
@@ -467,7 +482,6 @@ class DBImpl : public DB {
   std::unordered_set<uint64_t> hot_keys;
   std::map<int, std::unordered_set<uint64_t>> hot_keys_sets;
   std::map<int, std::unordered_map<uint64_t, int>> hot_keys_map;
-  bool is_first;
   //  ~~~~~ WZZ's comments for his adding source codes ~~~~~
 
 

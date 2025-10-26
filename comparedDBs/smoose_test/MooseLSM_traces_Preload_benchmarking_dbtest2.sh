@@ -1,11 +1,7 @@
 echo fb0-=0-= | sudo -S bash -c 'echo 800000 > /proc/sys/fs/file-max'
 bash -c 'ulimit -n 800000'
 
-
-BASE_VALUE_SIZE=128
 billion=1000000000
-
-DEVICE_NAME="nvme1n1"
 
 declare -A slowdown_map
 declare -A stop_map
@@ -32,19 +28,19 @@ cluster_key_size_map[1]=80
 cluster_key_size_map[13]=44
 cluster_key_size_map[25]=49
 cluster_key_size_map[30]=22
-cluster_key_size_map[35]=19
+cluster_key_size_map[35]=24
 cluster_key_size_map[51]=44	
 cluster_key_size_map[40]=44
 cluster_key_size_map[49]=44	
 
-cluster_value_size_map[1]=267
+cluster_value_size_map[1]=1000
 cluster_value_size_map[13]=4266
 cluster_value_size_map[25]=28
-cluster_value_size_map[30]=689
+cluster_value_size_map[30]=1000
 cluster_value_size_map[35]=1000
-cluster_value_size_map[51]=221
-cluster_value_size_map[40]=155
-cluster_value_size_map[49]=1024
+cluster_value_size_map[51]=1000
+cluster_value_size_map[40]=1000
+cluster_value_size_map[49]=1000
 
 convert_to_billion_format() {
     local num=$1
@@ -62,10 +58,10 @@ convert_to_billion_format() {
     fi
 }
 
-READ_RATIOS=(0.0 0.1 0.5 0.9 1.0)
+READ_RATIOS=(0.0)
 
-for i in 35 ; do
-    dir1="10B_RocksDB_SATASSD_TwitterCluster${i}_PreLoad_Performance"
+for i in 35  ; do
+    dir1="10B_Smoose_SATASSD_MultiTwitterClusters_PreLoad_Performance"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -75,26 +71,21 @@ for i in 35 ; do
                 for ct0 in 4 ; do  # 
                 for mb in 512; do
                 for buffer_size in 67108864; do
-                for num_kvs in 200000000 ; do
+                for num_kvs in 100000000 ; do
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
-                for blk_size in 1 ; do
-                for blk_cache_size in 32 ; do
-                for table_cache_size in 300 ; do
                 for read_ratio in "${READ_RATIOS[@]}"; do
                     write_ratio=$(echo "1.0 - $read_ratio" | bc)
-                    target_file_base=67108864
+                    
                     level1_max_bytes=$(($mb * 1048576))
                     buffer_size_mb=$((buffer_size / 1048576))
-                    target_file_base_mb=$((target_file_base / 1048576))
-                    block_size_write=$(($blk_size * 1024))
-
+                    
                     value_size_twitter=${cluster_value_size_map[$cluster_a]}
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
-                    log_file="Smoose_PreLoad_${num_format}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_read_${read_ratio}_write_${write_ratio}.log"
+                    log_file="Smoose_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_read_${read_ratio}_write_${write_ratio}.log"
                     data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
-                    memory_log_file="$(pwd)/Smoose_PreLoadMemory_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
+                    memory_log_file="$(pwd)/Smoose_PreLoadMemory_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代
                     if [ -f "$log_file" ]; then
@@ -103,7 +94,7 @@ for i in 35 ; do
                     fi
 
                     # 创建相应的目录
-                    db_dir="/mnt/db_test2/MooseLSM/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}_mixed_read_${read_ratio}_write_${write_ratio}"
+                    db_dir="/mnt/db_test2/MooseLSM/PreLoad_Cluster${cluster_a}_${num_format}_key${key_size_twitter}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_mixed_read_${read_ratio}_write_${write_ratio}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi
@@ -125,7 +116,7 @@ for i in 35 ; do
                     echo "$num_format"
                             
                     ../build/smoose_tester \
-                        --workload=mixed \
+                        --workload=fill \
                         --db=$db_dir \
                         --data_file_path=$data_file \
                         --num=$num_kvs \
@@ -144,7 +135,7 @@ for i in 35 ; do
                         DB_BENCH_PID=$(pgrep -af "db_bench --db=$db_dir" | grep -v 'sudo' | awk '{print $1}')
                         echo "Selected DB_BENCH_PID: $DB_BENCH_PID"
 
-                        # perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.txt" &
+                        # perf stat -p $DB_BENCH_PID 2>&1 | tee "perf_PreLoad_stat_${num_format}_val_${value_size_twitter}_Cluster${cluster_a}_mem${MEM}MiB_CT0${ct0}.txt" &
                         # PERF_PID=$!
 
                         wait $DB_BENCH_PID
@@ -170,9 +161,6 @@ for i in 35 ; do
                         # else
                         #     echo "perf stat process $PERF_PID is no longer running (it might have ended with db_bench)."
                         # fi
-                    done
-                    done
-                    done
                     done
                     done
                     done

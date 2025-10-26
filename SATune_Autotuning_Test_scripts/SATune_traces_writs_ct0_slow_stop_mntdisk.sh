@@ -9,14 +9,17 @@ declare -A slowdown_map
 declare -A stop_map
 declare -A cluster_num_kvs_map
 
-cluster_num_kvs_map[13]="200000000 "
+cluster_num_kvs_map[12]="200000000"
+cluster_num_kvs_map[13]="20000000"
 cluster_num_kvs_map[1]="200000000 "
 cluster_num_kvs_map[25]="200000000 600000000 1000000000 2000000000 3000000000"
 cluster_num_kvs_map[30]="200000000"
 cluster_num_kvs_map[35]="2000000"
 cluster_num_kvs_map[51]="200000000"
 cluster_num_kvs_map[40]="400000000"
+cluster_num_kvs_map[48]="400000000"
 cluster_num_kvs_map[49]="20000000"
+cluster_num_kvs_map[51]="400000000"
 
 #cluster 40
 cluster_L1mb_map[16]="160 180 200 300 512"
@@ -81,22 +84,28 @@ declare -A cluster_key_size_map
 
 # Define the cluster-specific value sizes and key sizes
 cluster_key_size_map[1]=80
+cluster_key_size_map[12]=44
 cluster_key_size_map[13]=44
 cluster_key_size_map[25]=49
 cluster_key_size_map[30]=22
 cluster_key_size_map[35]=19
 cluster_key_size_map[51]=44
 cluster_key_size_map[40]=44
+cluster_key_size_map[48]=44	
 cluster_key_size_map[49]=44	
+cluster_key_size_map[51]=44	
 
 cluster_value_size_map[1]=267
-cluster_value_size_map[13]=266
+cluster_value_size_map[12]=1030
+cluster_value_size_map[13]=4266
 cluster_value_size_map[25]=28
 cluster_value_size_map[30]=689
 cluster_value_size_map[35]=1796
 cluster_value_size_map[51]=221
 cluster_value_size_map[40]=155
+cluster_value_size_map[48]=70
 cluster_value_size_map[49]=10658
+cluster_value_size_map[51]=221
 
 
 convert_to_billion_format() {
@@ -115,16 +124,16 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 40; do
-    dir1="SATune_SATASSD_TwitterCluster${i}_Benchmarking_Performance_switch10"
+for i in 13; do
+    dir1="SATune_SATASSD_TwitterCluster${i}_Benchmarking_Performance_Autotuning"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
 
             for cluster_a in "$i"; do  # 
-                for ct0 in 1 2; do  # 
-                for mb in 100 300 200 500 ; do
+                for ct0 in 4; do  # 
+                for mb in 100; do
                 for buffer_size in 67108864; do
                 for num_kvs in ${cluster_num_kvs_map[$cluster_a]}; do
                     num_format=$(convert_to_billion_format "$num_kvs")
@@ -155,20 +164,20 @@ for i in 40; do
                     memory_log_file="$(pwd)/SATune_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_F${multiplier}.log"      
                     compaction_log_file="$(pwd)/Compaction_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}M_CT0${ct0}_L1${mb}_F${multiplier}_Switch${multiplier_switch}_2F${after_multiplier}.log"  
                     
-                    # 如果日志文件存在，则跳过当前迭代
-                    if [ -f "$log_file" ]; then
-                        echo "Log file $log_file already exists. Skipping this iteration."
-                        continue
-                    fi
+                    
+                    # if [ -f "$log_file" ]; then
+                    #     echo "Log file $log_file already exists. Skipping this iteration."
+                    #     continue
+                    # fi
 
-                    if [ -f "$compaction_log_file" ]; then
-                        # 如果存在，打印一条信息并强制删除它
-                        echo "Log file $compaction_log_file already exists. Deleting it now."
-                        rm -f "$compaction_log_file"
-                    fi
+                    # if [ -f "$compaction_log_file" ]; then
+                    #     # 如果存在，打印一条信息并强制删除它
+                    #     echo "Log file $compaction_log_file already exists. Deleting it now."
+                    #     rm -f "$compaction_log_file"
+                    # fi
 
-                    # 创建相应的目录
-                    db_dir="/mntdisk/SATune10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                   
+                    db_dir="/mnt/db_test2/SATune10B/PreLoad_Cluster${cluster_a}_${num_format}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_targetbase${target_file_base_mb}_Block${blk_size}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
                     if [ ! -d "$db_dir" ]; then
                         mkdir -p "$db_dir"
                     fi

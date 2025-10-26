@@ -789,7 +789,7 @@ class Stats {
         }
         fprintf(stdout, "%s\n", stats.c_str());
         fprintf(stdout, "leveldb statistical: %lu operations (real operations: %lu) have been finished (user has been written %.3f MB data into db.)\n\n", done_, real_ops, bytes_/1048576.0);
-        // leveldb::PrintPerformanceProfileIfEnabled(FLAGS_profile_show_details);
+        leveldb::PrintPerformanceProfileIfEnabled(FLAGS_profile_show_details);
         fflush(stdout);
       }
     }

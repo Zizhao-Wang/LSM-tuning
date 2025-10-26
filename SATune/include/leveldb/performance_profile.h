@@ -118,6 +118,8 @@ struct PerformanceStats {
 
   double GetLevelAverageSearchTimeNs(int level) const;
 
+  uint64_t GetLevelSearchCount(int level) const;
+
   void ResetBatchCounters();
     
   // 生成性能报告

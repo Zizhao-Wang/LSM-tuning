@@ -214,16 +214,16 @@ namespace leveldb{
     // 保存原始值用于回滚
     int old_l0_trigger = 0;
     int old_l1_size = 0; 
-    int old_level_multiplier = 0;
+    double old_level_multiplier = 0;
 
     // 保存变化量（新增）
     int l0_trigger_delta = 0;        // L0_TRIGGER变化量：+3表示增加3，-2表示减少2
     int l1_size_delta = 0;           // L1_SIZE变化量
-    int level_multiplier_delta = 0;  // LEVEL_MULTIPLIER变化量
+    double level_multiplier_delta = 0;  // LEVEL_MULTIPLIER变化量
 
     int new_l0_trigger = 0;
     int new_l1_size = 0; 
-    int new_level_multiplier = 0;
+    double new_level_multiplier = 0;
 
     int actual_l1_size = 0;
 
@@ -238,8 +238,13 @@ namespace leveldb{
       return (changed_params & static_cast<uint32_t>(param)) != 0;
     }
 
+    bool CheckAndPauseL0Recording() const {
+      return (changed_params & static_cast<uint32_t>(TuningActionType::L0_TRIGGER)) ||
+        (changed_params & static_cast<uint32_t>(TuningActionType::L1_SIZE));
+    }
+
     // 开始新的tuning session - 仅记录当前值作为基准
-    void StartTuning(int current_l0_trigger, int current_l1_size, int current_level_multiplier) {
+    void StartTuning(int current_l0_trigger, int current_l1_size, double current_level_multiplier) {
 
       // 保存当前值作为本次tuning的起点
       changed_params = 0;
@@ -252,12 +257,11 @@ namespace leveldb{
       // 只重置 has_pending_changes 表示新的tuning开始
       has_pending_changes = false;
       
-      fprintf(stdout, "Started tuning session with baseline: L0=%d, L1=%d, LM=%d\n", 
-        current_l0_trigger, current_l1_size, current_level_multiplier);
+      fprintf(stdout, "Started tuning session with baseline: L0=%d, L1=%d, LM=%.2f\n", current_l0_trigger, current_l1_size, current_level_multiplier);
     }
 
     // 结束tuning session - 计算delta并更新changed_params
-    void EndTuning(int final_l0_trigger, int final_l1_size, int final_level_multiplier, 
+    void EndTuning(int final_l0_trigger, int final_l1_size, double final_level_multiplier, 
         int fianl_actual_l1_size) {
       
       // 处理 -1 的情况：-1 表示不改变，使用原值
@@ -294,12 +298,12 @@ namespace leveldb{
       
       if (l1_size_delta != 0) {
         MarkChanged(TuningActionType::L1_SIZE);
-        fprintf(stdout, "L1_SIZE changed by %+d (from %d to %d)\n",  l1_size_delta, old_l1_size, new_l1_size);
+        fprintf(stdout, "L1_SIZE changed by %.2f (from %.2fMiB to %.2fMiB)\n",  (l1_size_delta/1048576.0), (old_l1_size/1048576.0), (new_l1_size/1048576.0));
       }
       
       if (level_multiplier_delta != 0) {
         MarkChanged(TuningActionType::LEVEL_MULTIPLIER);
-        fprintf(stdout, "LEVEL_MULTIPLIER changed by %+d (from %d to %d)\n",  level_multiplier_delta, old_level_multiplier, new_level_multiplier);
+        fprintf(stdout, "LEVEL_MULTIPLIER changed by %.2f (from %.2f to %.2f)\n",  level_multiplier_delta, old_level_multiplier, new_level_multiplier);
       }
       
       //maybe we need to record the final values in last tuning point
@@ -431,6 +435,12 @@ class PerformanceMonitor {
     return false;
   }
 
+  void UpdateLevelCreation(int level) {
+    if (level >= 0 && level < 7 && !level_first_creation[level]) {
+      level_first_creation[level] = true;
+    }
+  }
+
   bool CheckAndHandleBatch(DBImpl* db_im, int level, bool is_tuning=false);
 
   bool ChechAndDecideStartWriteTuning(const FlushStats& flush_stats_);
@@ -474,6 +484,7 @@ private:
 
   bool is_first_l0_compaction;
   bool is_first_l1_compaction = 0;
+  bool is_the_first_tuning_try = true;
 
 
   // This struct is used to record the operations in the last tuning point

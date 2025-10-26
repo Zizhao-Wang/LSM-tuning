@@ -52,7 +52,7 @@ namespace leveldb {
     }
   };
 
-	// Structure to hold statistics collected during L0 compaction for C0 tuning.
+	// Structure to hold statistics collected during L0->L1 compaction for C0 tuning.
   struct L0TuningStatsInCompaction {
     // Total input keys read from L0 (+ L1 overlaps) during L0 compaction.
     uint64_t total_keys_in = 0;
@@ -127,7 +127,6 @@ namespace leveldb {
     }
   };
 	// You can define related constants here as well.
-	// 您也可以在这里定义相关的常量。
 	const int kL0TuningTargetBatchSize = 4;
 	const double kL0TuningSkewSimilarityThreshold = 0.20;
 
@@ -136,6 +135,21 @@ namespace leveldb {
     L0_COMPACTION_RUNNING,      // L0 压缩正在进行
     AWAITING_BASELINE           // 等待建立基准 (可选，也可以通过 l0variancestats_.table_number == 0 判断)
 	};
+
+
+
+  struct TableStats {
+    double mu;         // 每个table的平均出现次数 = total_keys / unique_keys
+    double var;        // 每个table的方差（BuildTableWithVarianceWiMerge计算所得）
+    uint64_t n;        // 样本数，可以取 unique_keys 或 total_keys，看你一致性定义
+  };
+
+  // 聚合最近若干个flush文件的统计
+  struct PooledStats {
+    double mu;
+    double var;
+    double CV;
+  };
 
   struct FlushStats {
     // 原有的丢弃比例
@@ -149,6 +163,9 @@ namespace leveldb {
     // 写放大相关 (Write Amplification)
     double write_amplification_ratio;     // 写放大比例
     uint64_t actual_bytes_written;        // 实际写入磁盘的字节数
+
+    std::vector<TableStats> recent_tables_;
+    PooledStats pooled;
     
     // 构造函数初始化
     FlushStats() :average_discard_ratio_in_flush(0.0),total_flush_count(0), write_amplification_ratio(1.0),
@@ -160,8 +177,55 @@ namespace leveldb {
         write_amplification_ratio = static_cast<double>(actual_bytes_written) / user_bytes_written;
       }
     }
+    
+    const uint64_t GetAverageFileSizeinL0() const{
+      return total_bytes_flushed/total_flush_count;
+    }
+
+    void CalculateCV(){
+      pooled = AggregateFlushStats(recent_tables_);
+    }
+
+    PooledStats AggregateFlushStats(const std::vector<TableStats>& tables) {
+      PooledStats result{0.0, 0.0, 0.0};
+      if (tables.empty()) return result;
+
+      // Step 1: 加权平均得到总体均值
+      long double total_n = 0.0;
+      long double weighted_mu_sum = 0.0;
+      for (size_t i = 0; i < tables.size(); ++i) {
+        const auto& t = tables[i];
+        total_n += t.n;
+        weighted_mu_sum += t.mu * t.n;
+        fprintf(stderr, "[Table %02zu] n=%llu, mu=%.6f, var=%.6f, std=%.6f\n", i, (unsigned long long)t.n, t.mu, t.var, std::sqrt(t.var));
+      }
+      if (total_n <= 1) return result;
+      double mu_total = weighted_mu_sum / total_n;
+
+      // Step 2: 合并方差（pooled variance）
+      long double numerator = 0.0;
+      for (const auto& t : tables) {
+          numerator += (t.n - 1) * t.var + t.n * (t.mu - mu_total) * (t.mu - mu_total);
+      }
+      double var_total = numerator / (total_n - 1);
+      double std_total = std::sqrt(var_total);
+
+      // Step 3: 计算 CV (Coefficient of Variation)
+      double CV = (mu_total > 0.0) ? std_total / mu_total : 0.0;
+
+      result.mu = mu_total;
+      result.var = var_total;
+      result.CV = CV;
+      fprintf(stderr,"[POOLED RESULT] total_tables=%zu, total_n=%.0Lf\n"
+        "mu_total=%.6f var_total=%.6f std_total=%.6f CV=%.6f\n",
+        tables.size(), total_n,mu_total, var_total, std_total, CV);
+
+      return result;
+    }
   };
 
+
+  // This structure is used to record the slow_down/stop events during user writing. 
   struct LevelStallStats {
     // Statistics for short (1ms) slowdowns when L0 file count is high.
     std::atomic<uint64_t> slowdown_micros{0};

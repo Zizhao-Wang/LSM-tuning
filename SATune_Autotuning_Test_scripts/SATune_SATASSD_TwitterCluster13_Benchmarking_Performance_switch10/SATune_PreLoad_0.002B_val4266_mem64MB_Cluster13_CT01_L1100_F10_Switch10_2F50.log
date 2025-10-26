@@ -1,0 +1,1002 @@
+LevelDB:    version 1.23
+Date:       Mon Oct 13 16:39:28 2025
+CPU:        112 * Intel(R) Xeon(R) Gold 6348 CPU @ 2.60GHz
+CPUCache:   43008 KB
+open dbs:in Open()
+Macro USE_O_DIRECT is NOT defined.
+entering db_impl.cc:/mntdisk/SATune10B/PreLoad_Cluster13_0.002B_mem64MB_CT1_L1base100_targetbase64_Block4_Blkcache128_Tabcache1000
+workload_num: 2000000 entries_per_batch_:1
+ The key size:44 value size:4266 
+The k_size:44 The v_size:4266 
+Scheduling a new flush thread because none was scheduled before.
+start a flush thread!
+[Flush Thread]: Entered FlushCall.
+[Flush Thread]: Scheduling a new PERMANENT compaction thread.
+../../SATune/release/db_bench --db=/mntdisk/SATune10B/PreLoad_Cluster13_0.002B_mem64MB_CT1_L1base100_targetbase64_Block4_Blkcache128_Tabcache1000 --max_bytes_for_level1_base=104857600 --num=2000000 --workload_num=2000000 --max_bytes_for_level1_multiplier=10 --multiplier_switch_level=10 --max_bytes_for_level_multiplier_after_switch=50 --block_size=4096 --key_size=44 --value_size=4266 --batch_size=1 --benchmarks=clusterQuery,stats --level_compaction_log=/home/jeff-wang/LSM-tuning/SATune_Autotuning_Test_scripts/SATune_SATASSD_TwitterCluster13_Benchmarking_Performance_switch10/Compaction_0.002B_key44_val4266_Cluster13_mem64M_CT01_L1100_F10_Switch10_2F50.log --data_file=/mnt/nvm/second_cluster13.sort --bloom_bits=10 --cache_size=8388608 --level0_compaction_trigger=1 --level0_slowdown_writes_trigger=8 --level0_stop_writes_trigger=12 --use_direct_reads_for_recovery=false --use_direct_random_access=false --use_direct_writeappend_file=false --open_files=80000 --compression_ratio=0 --compression=0 --print_wa=true --stats_interval=200000 --histogram=1 --use_existing_db=false --write_buffer_size=67108864 --mem_log_file=/home/jeff-wang/LSM-tuning/SATune_Autotuning_Test_scripts/SATune_SATASSD_TwitterCluster13_Benchmarking_Performance_switch10/SATune_PreLoad_0.002B_key44_val4266_Cluster13_mem64MiB_CT01_F10.log --file_size_generated_in_compaction=67108864 --enable_performance_profiling=true --profile_show_details=true 
+Keys:       16 bytes each
+Values:     4266 bytes each (0 bytes after compression)
+Entries:    2000000
+RawSize:    8167.3 MB (estimated)
+FileSize:   30.5 MB (estimated)
+WARNING: Optimization is disabled: benchmarks unnecessarily slow
+WARNING: Assertions are enabled; benchmarks unnecessarily slow
+some command parameters have been selected:
+  threads: 1
+  duration: 0
+  print_wa: 1
+  num_entries: 2000000
+  bechmark selected clusterQuery,stats
+  hot_file_path: 
+  Hot_data_triggered_compaction_file_path: 
+  data_file_path: /mnt/nvm/second_cluster13.sort
+  percentages: 
+------------------------------------------------
+the row_data[5] is:set
+the row_data[5] is:set
+the row_data[5] is:set
+the row_data[5] is:get
+the row_data[5] is:get
+the row_data[5] is:get
+the row_data[5] is:get
+the row_data[5] is:get
+the row_data[5] is:get
+the row_data[5] is:get
+the row_data[5] is:set
+2025-10-13 16:39:32 ... thread 0: (200000,200000) ops and (65232.2,65232.2) ops/second in (3.065971,3.065971) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     4     260       3        0        0       390       390      0       2     3     0       0     0      0     2         1 0.000000 65.019473
+    1     2     130       1      130      130       130       130      0       0     0     0       0     0      3     0         0 65.019473 0.000000
+user_io:381.365MB (L0 writes after deduplicate:389.995MB)  total_ios: 520.084MB WriteAmplification: 1.3637
+leveldb statistical: 200000 operations (real operations: 0) have been finished (user has been written 32609770.947 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 74036
+Total Get Time: 449.238 ms
+Average Get Time: 0.006 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 74036 ops, 134.647 ms, 1.818 μs/op (30.0% of total)
+Immutable Lookups: 43367 ops, 66.948 ms, 1.543 μs/op (14.9% of total)
+
+--- File Metadata Search ---
+Overall file checking: 40129 ops, 190.655 ms, 4.751 μs/op (42.4% of total)
+  - Level 0 Metadata Search: 40129 ops, 8.858 ms, 0.220 μs/op (2.0% of total)
+  L0: 22951 searches, 97.55 ms, 4.25 μs/search
+  - Other Levels Metadata Search: 27915 ops, 4.23 ms, 0.15 μs/op (0.9% of total)
+  L1: 27899 searches, 60.22 ms, 2.16 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 44452 ops, 7.786 ms, 0.175 μs/op (1.7% of total, 12.2% of level)
+Index Block Search: 44452 ops, 55.020 ms, 1.237 μs/op (12.2% of total, 86.0% of level)
+Data Block Read: 297 ops, 1.197 ms, 4.030 μs/op (0.3% of total, 1.9% of level)
+-- Bloom Filter Results --
+Total: 297, Positive: 292 (98.3%), Negative: 5 (1.7%)
+-- Level 0 Summary --
+Total Time: 64.0 ms (14.2% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 27665 ops, 5.258 ms, 0.190 μs/op (1.2% of total, 13.0% of level)
+Index Block Search: 27665 ops, 34.439 ms, 1.244 μs/op (7.7% of total, 85.4% of level)
+Data Block Read: 160 ops, 0.641 ms, 4.005 μs/op (0.1% of total, 1.6% of level)
+-- Bloom Filter Results --
+Total: 160, Positive: 152 (95.0%), Negative: 8 (5.0%)
+-- Other Levels Summary --
+Total Time: 40.3 ms (9.0% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 13.044 ms (2.9% of total time)
+Total Index Block Search: 89.459 ms (19.9% of total time)
+Total Data Block Read: 1.838 ms (0.4% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 457, Positive: 444 (97.2%), Negative: 13 (2.8%)
+-- Final Summary --
+Memory Operations: 201.6 ms (44.9% of total time)
+In-disk LSM Searching: 190.655 ms (42.4% of total time)
+Level 0 Operations: 64.003 ms (14.2% of total time)
+Other Levels Operations: 40.338 ms (9.0% of total time)
+==============================================
+----------------------------
+2025-10-13 16:39:38 ... thread 0: (200000,400000) ops and (35435.6,45924.2) ops/second in (5.644036,8.710007) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     6     390       7        0        0       910       910      0       4    13     0       0     0      0     4         1 0.000000 65.019473
+    1     8     520       7      910      910       910       910      0       0     0     0       0     0     15     0         0 65.019473 0.000000
+user_io:889.851MB (L0 writes after deduplicate:910.007MB)  total_ios: 1820.314MB WriteAmplification: 2.0456
+leveldb statistical: 400000 operations (real operations: 0) have been finished (user has been written 130174036.824 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 148327
+Total Get Time: 1365.267 ms
+Average Get Time: 0.009 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 148327 ops, 289.406 ms, 1.951 μs/op (21.2% of total)
+Immutable Lookups: 85920 ops, 151.959 ms, 1.768 μs/op (11.1% of total)
+
+--- File Metadata Search ---
+Overall file checking: 79508 ops, 804.860 ms, 10.123 μs/op (59.0% of total)
+  - Level 0 Metadata Search: 79508 ops, 33.588 ms, 0.422 μs/op (2.5% of total)
+  L0: 62325 searches, 571.08 ms, 9.16 μs/search
+  - Other Levels Metadata Search: 66458 ops, 12.44 ms, 0.19 μs/op (0.9% of total)
+  L1: 66432 searches, 143.64 ms, 2.16 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 255282 ops, 46.496 ms, 0.182 μs/op (3.4% of total, 11.9% of level)
+Index Block Search: 255282 ops, 336.130 ms, 1.316 μs/op (24.6% of total, 86.2% of level)
+Data Block Read: 1632 ops, 7.446 ms, 4.562 μs/op (0.5% of total, 1.9% of level)
+-- Bloom Filter Results --
+Total: 1632, Positive: 1612 (98.8%), Negative: 20 (1.2%)
+-- Level 0 Summary --
+Total Time: 390.1 ms (28.6% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 66197 ops, 12.005 ms, 0.181 μs/op (0.9% of total, 12.5% of level)
+Index Block Search: 66197 ops, 83.403 ms, 1.259 μs/op (6.1% of total, 86.5% of level)
+Data Block Read: 297 ops, 1.010 ms, 3.402 μs/op (0.1% of total, 1.0% of level)
+-- Bloom Filter Results --
+Total: 297, Positive: 279 (93.9%), Negative: 18 (6.1%)
+-- Other Levels Summary --
+Total Time: 96.4 ms (7.1% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 58.500 ms (4.3% of total time)
+Total Index Block Search: 419.533 ms (30.7% of total time)
+Total Data Block Read: 8.456 ms (0.6% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 1929, Positive: 1891 (98.0%), Negative: 38 (2.0%)
+-- Final Summary --
+Memory Operations: 441.4 ms (32.3% of total time)
+In-disk LSM Searching: 804.860 ms (59.0% of total time)
+Level 0 Operations: 390.072 ms (28.6% of total time)
+Other Levels Operations: 96.418 ms (7.1% of total time)
+==============================================
+----------------------------
+2025-10-13 16:39:46 ... thread 0: (200000,600000) ops and (26150.8,36679.4) ops/second in (7.647937,16.357944) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     4     260      11        0        0      1430      1430      0       6    20     0       0     0      0     6         1 0.000000 65.019473
+    1     4     260      15     2080     2080      2080      2080      0       0     0     0       0     0     19     0        14 65.019473 62.328349
+    2    14     910       0        0        0         0         0      0       0     0     0       0     0      0     0         0 62.328349 0.000000
+user_io:1398.338MB (L0 writes after deduplicate:1430.039MB)  total_ios: 3510.660MB WriteAmplification: 2.5106
+leveldb statistical: 600000 operations (real operations: 0) have been finished (user has been written 293327700.971 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 222209
+Total Get Time: 2331.883 ms
+Average Get Time: 0.010 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 222209 ops, 447.874 ms, 2.015 μs/op (19.2% of total)
+Immutable Lookups: 128473 ops, 209.081 ms, 1.627 μs/op (9.0% of total)
+
+--- File Metadata Search ---
+Overall file checking: 119242 ops, 1491.912 ms, 12.511 μs/op (64.0% of total)
+  - Level 0 Metadata Search: 119242 ops, 59.706 ms, 0.500 μs/op (2.6% of total)
+  L0: 102054 searches, 1076.32 ms, 10.55 μs/search
+  - Other Levels Metadata Search: 134938 ops, 28.49 ms, 0.21 μs/op (1.2% of total)
+  L1: 105247 searches, 190.85 ms, 1.81 μs/search
+  L2: 29664 searches, 61.83 ms, 2.08 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 455921 ops, 88.387 ms, 0.193 μs/op (3.8% of total, 11.9% of level)
+Index Block Search: 455921 ops, 635.765 ms, 1.394 μs/op (27.3% of total, 85.8% of level)
+Data Block Read: 2946 ops, 16.425 ms, 5.575 μs/op (0.7% of total, 2.2% of level)
+-- Bloom Filter Results --
+Total: 2946, Positive: 2915 (98.9%), Negative: 31 (1.1%)
+-- Level 0 Summary --
+Total Time: 740.6 ms (31.8% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 112251 ops, 20.928 ms, 0.186 μs/op (0.9% of total, 12.4% of level)
+Index Block Search: 112251 ops, 145.826 ms, 1.299 μs/op (6.3% of total, 86.5% of level)
+Data Block Read: 423 ops, 1.761 ms, 4.162 μs/op (0.1% of total, 1.0% of level)
+-- Bloom Filter Results --
+Total: 423, Positive: 397 (93.9%), Negative: 26 (6.1%)
+-- Other Levels Summary --
+Total Time: 168.5 ms (7.2% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 109.315 ms (4.7% of total time)
+Total Index Block Search: 781.591 ms (33.5% of total time)
+Total Data Block Read: 18.186 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 3369, Positive: 3312 (98.3%), Negative: 57 (1.7%)
+-- Final Summary --
+Memory Operations: 657.0 ms (28.2% of total time)
+In-disk LSM Searching: 1491.912 ms (64.0% of total time)
+Level 0 Operations: 740.577 ms (31.8% of total time)
+Other Levels Operations: 168.515 ms (7.2% of total time)
+==============================================
+----------------------------
+2025-10-13 16:39:55 ... thread 0: (200000,800000) ops and (21496.2,31174.6) ops/second in (9.303977,25.661921) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     3     195      15        0        0      2015      2015      0       7    27     0       0     0      0     7         1 0.000000 65.019473
+    1    11     682      24     3446     3446      3446      3446      0       2     2     0       0     0     26     2        17 65.019473 32.392018
+    2    18    1138       1      130      130       130       130      0       0     0     0       0     0      3     0         0 32.392018 0.000000
+user_io:1970.385MB (L0 writes after deduplicate:2015.089MB)  total_ios: 5591.517MB WriteAmplification: 2.8378
+leveldb statistical: 800000 operations (real operations: 0) have been finished (user has been written 520623552.607 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 296688
+Total Get Time: 3289.966 ms
+Average Get Time: 0.011 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 296688 ops, 605.871 ms, 2.042 μs/op (18.4% of total)
+Immutable Lookups: 171105 ops, 256.355 ms, 1.498 μs/op (7.8% of total)
+
+--- File Metadata Search ---
+Overall file checking: 159423 ops, 2185.367 ms, 13.707 μs/op (66.4% of total)
+  - Level 0 Metadata Search: 159423 ops, 84.502 ms, 0.530 μs/op (2.6% of total)
+  L0: 142229 searches, 1530.68 ms, 10.76 μs/search
+  - Other Levels Metadata Search: 213308 ops, 47.01 ms, 0.22 μs/op (1.4% of total)
+  L1: 144462 searches, 275.74 ms, 1.91 μs/search
+  L2: 68795 searches, 141.51 ms, 2.06 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 664945 ops, 126.354 ms, 0.190 μs/op (3.8% of total, 12.0% of level)
+Index Block Search: 664945 ops, 908.325 ms, 1.366 μs/op (27.6% of total, 85.9% of level)
+Data Block Read: 4341 ops, 22.280 ms, 5.132 μs/op (0.7% of total, 2.1% of level)
+-- Bloom Filter Results --
+Total: 4341, Positive: 4299 (99.0%), Negative: 42 (1.0%)
+-- Level 0 Summary --
+Total Time: 1057.0 ms (32.1% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 190389 ops, 35.967 ms, 0.188 μs/op (1.1% of total, 12.7% of level)
+Index Block Search: 190389 ops, 243.432 ms, 1.278 μs/op (7.4% of total, 86.1% of level)
+Data Block Read: 681 ops, 3.208 ms, 4.710 μs/op (0.1% of total, 1.1% of level)
+-- Bloom Filter Results --
+Total: 681, Positive: 649 (95.3%), Negative: 32 (4.7%)
+-- Other Levels Summary --
+Total Time: 282.6 ms (8.6% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 162.321 ms (4.9% of total time)
+Total Index Block Search: 1151.757 ms (35.0% of total time)
+Total Data Block Read: 25.488 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 5022, Positive: 4948 (98.5%), Negative: 74 (1.5%)
+-- Final Summary --
+Memory Operations: 862.2 ms (26.2% of total time)
+In-disk LSM Searching: 2185.367 ms (66.4% of total time)
+Level 0 Operations: 1056.960 ms (32.1% of total time)
+Other Levels Operations: 282.607 ms (8.6% of total time)
+==============================================
+----------------------------
+2025-10-13 16:40:06 ... thread 0: (200000,1000000) ops and (19948.6,28020.9) ops/second in (10.025754,35.687675) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     3     195      19        0        0      2536      2536      0       8    35     0       0     0      0     8         1 0.000000 65.019473
+    1    18    1072      31     4518     4518      4518      4518      0       4     4     0       0     0     35     4        17 65.019473 32.392018
+    2    20    1269       3      456      456       456       456      0       0     0     0       0     0      9     0         0 32.392018 0.000000
+user_io:2478.871MB (L0 writes after deduplicate:2535.117MB)  total_ios: 7509.436MB WriteAmplification: 3.0294
+leveldb statistical: 1000000 operations (real operations: 0) have been finished (user has been written 814769685.900 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 370359
+Total Get Time: 4278.787 ms
+Average Get Time: 0.012 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 370359 ops, 762.707 ms, 2.059 μs/op (17.8% of total)
+Immutable Lookups: 213929 ops, 318.643 ms, 1.489 μs/op (7.4% of total)
+
+--- File Metadata Search ---
+Overall file checking: 199181 ops, 2891.266 ms, 14.515 μs/op (67.6% of total)
+  - Level 0 Metadata Search: 199181 ops, 109.078 ms, 0.547 μs/op (2.5% of total)
+  L0: 181986 searches, 1993.39 ms, 10.95 μs/search
+  - Other Levels Metadata Search: 291261 ops, 69.59 ms, 0.24 μs/op (1.6% of total)
+  L1: 183475 searches, 350.90 ms, 1.91 μs/search
+  L2: 107728 searches, 228.11 ms, 2.12 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 830290 ops, 163.016 ms, 0.196 μs/op (3.8% of total, 11.9% of level)
+Index Block Search: 830290 ops, 1181.497 ms, 1.422 μs/op (27.6% of total, 86.0% of level)
+Data Block Read: 5471 ops, 28.941 ms, 5.289 μs/op (0.7% of total, 2.1% of level)
+-- Bloom Filter Results --
+Total: 5471, Positive: 5424 (99.1%), Negative: 47 (0.9%)
+-- Level 0 Summary --
+Total Time: 1373.5 ms (32.1% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 262251 ops, 49.732 ms, 0.189 μs/op (1.2% of total, 12.5% of level)
+Index Block Search: 262251 ops, 342.536 ms, 1.306 μs/op (8.0% of total, 86.4% of level)
+Data Block Read: 959 ops, 4.355 ms, 4.540 μs/op (0.1% of total, 1.1% of level)
+-- Bloom Filter Results --
+Total: 959, Positive: 915 (95.4%), Negative: 44 (4.6%)
+-- Other Levels Summary --
+Total Time: 396.6 ms (9.3% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 212.748 ms (5.0% of total time)
+Total Index Block Search: 1524.034 ms (35.6% of total time)
+Total Data Block Read: 33.296 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 6430, Positive: 6339 (98.6%), Negative: 91 (1.4%)
+-- Final Summary --
+Memory Operations: 1081.4 ms (25.3% of total time)
+In-disk LSM Searching: 2891.266 ms (67.6% of total time)
+Level 0 Operations: 1373.455 ms (32.1% of total time)
+Other Levels Operations: 396.623 ms (9.3% of total time)
+==============================================
+----------------------------
+2025-10-13 16:40:20 ... thread 0: (200000,1200000) ops and (14121.6,24072.0) ops/second in (14.162700,49.850375) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     1      65      23        0        0      3056      3056      0       9    45     0       0     0      0     9         1 0.000000 65.019473
+    1    25    1526      40     5972     5972      5972      5972      0       7     7     0       0     0     48     7        17 65.019473 32.392018
+    2    23    1464      10     1369     1369      1368      1368      0       0     0     0       0     0     16     0         0 32.392018 0.000000
+user_io:2987.358MB (L0 writes after deduplicate:3055.158MB)  total_ios: 10395.730MB WriteAmplification: 3.4799
+leveldb statistical: 1200000 operations (real operations: 0) have been finished (user has been written 1172633585.490 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 444635
+Total Get Time: 5331.319 ms
+Average Get Time: 0.012 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 444635 ops, 933.951 ms, 2.100 μs/op (17.5% of total)
+Immutable Lookups: 256700 ops, 379.657 ms, 1.478 μs/op (7.1% of total)
+
+--- File Metadata Search ---
+Overall file checking: 239048 ops, 3643.456 ms, 15.241 μs/op (68.3% of total)
+  - Level 0 Metadata Search: 239048 ops, 134.447 ms, 0.562 μs/op (2.5% of total)
+  L0: 213078 searches, 2480.09 ms, 11.64 μs/search
+  - Other Levels Metadata Search: 369440 ops, 96.39 ms, 0.26 μs/op (1.8% of total)
+  L1: 222701 searches, 430.01 ms, 1.93 μs/search
+  L2: 146681 searches, 326.38 ms, 2.23 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 980153 ops, 202.199 ms, 0.206 μs/op (3.8% of total, 11.9% of level)
+Index Block Search: 980153 ops, 1469.091 ms, 1.498 μs/op (27.6% of total, 86.1% of level)
+Data Block Read: 6433 ops, 34.777 ms, 5.405 μs/op (0.7% of total, 2.0% of level)
+-- Bloom Filter Results --
+Total: 6433, Positive: 6377 (99.1%), Negative: 56 (0.9%)
+-- Level 0 Summary --
+Total Time: 1706.1 ms (32.0% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 336564 ops, 63.978 ms, 0.190 μs/op (1.2% of total, 12.3% of level)
+Index Block Search: 336564 ops, 448.484 ms, 1.332 μs/op (8.4% of total, 86.4% of level)
+Data Block Read: 1410 ops, 6.806 ms, 4.827 μs/op (0.1% of total, 1.3% of level)
+-- Bloom Filter Results --
+Total: 1410, Positive: 1349 (95.7%), Negative: 61 (4.3%)
+-- Other Levels Summary --
+Total Time: 519.3 ms (9.7% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 266.177 ms (5.0% of total time)
+Total Index Block Search: 1917.575 ms (36.0% of total time)
+Total Data Block Read: 41.583 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 7843, Positive: 7726 (98.5%), Negative: 117 (1.5%)
+-- Final Summary --
+Memory Operations: 1313.6 ms (24.6% of total time)
+In-disk LSM Searching: 3643.456 ms (68.3% of total time)
+Level 0 Operations: 1706.066 ms (32.0% of total time)
+Other Levels Operations: 519.268 ms (9.7% of total time)
+==============================================
+----------------------------
+2025-10-13 16:40:40 ... thread 0: (200000,1400000) ops and (10578.8,20361.9) ops/second in (18.905650,68.756025) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     0       0      27        0        0      3641      3641      0      10    55     0       0     0      0    10         1 0.000000 65.019473
+    1    15     881      45     6853     6853      6853      6853      0      16    23     0       0     0     52    16        22 65.019473 7.085581
+    2    44    2759      23     3580     3580      3580      3580      0       0     0     0       0     0     35     0         0 7.085581 0.000000
+user_io:3559.405MB (L0 writes after deduplicate:3640.199MB)  total_ios: 14073.433MB WriteAmplification: 3.9539
+leveldb statistical: 1400000 operations (real operations: 0) have been finished (user has been written 1597438357.540 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 518367
+Total Get Time: 6650.193 ms
+Average Get Time: 0.013 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 518367 ops, 1128.586 ms, 2.177 μs/op (17.0% of total)
+Immutable Lookups: 299466 ops, 456.168 ms, 1.523 μs/op (6.9% of total)
+
+--- File Metadata Search ---
+Overall file checking: 278423 ops, 4612.786 ms, 16.567 μs/op (69.4% of total)
+  - Level 0 Metadata Search: 278423 ops, 167.177 ms, 0.600 μs/op (2.5% of total)
+  L0: 251117 searches, 3131.92 ms, 12.47 μs/search
+  - Other Levels Metadata Search: 446401 ops, 126.20 ms, 0.28 μs/op (1.9% of total)
+  L1: 261233 searches, 538.50 ms, 2.06 μs/search
+  L2: 185110 searches, 431.57 ms, 2.33 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 1159963 ops, 254.486 ms, 0.219 μs/op (3.8% of total, 11.8% of level)
+Index Block Search: 1159963 ops, 1850.071 ms, 1.594 μs/op (27.8% of total, 86.1% of level)
+Data Block Read: 7666 ops, 43.839 ms, 5.718 μs/op (0.7% of total, 2.0% of level)
+-- Bloom Filter Results --
+Total: 7666, Positive: 7586 (99.0%), Negative: 80 (1.0%)
+-- Level 0 Summary --
+Total Time: 2148.4 ms (32.3% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 413521 ops, 81.747 ms, 0.197 μs/op (1.2% of total, 12.3% of level)
+Index Block Search: 413521 ops, 574.392 ms, 1.389 μs/op (8.6% of total, 86.5% of level)
+Data Block Read: 1655 ops, 8.197 ms, 4.953 μs/op (0.1% of total, 1.2% of level)
+-- Bloom Filter Results --
+Total: 1655, Positive: 1576 (95.2%), Negative: 79 (4.8%)
+-- Other Levels Summary --
+Total Time: 664.3 ms (10.0% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 336.233 ms (5.1% of total time)
+Total Index Block Search: 2424.462 ms (36.5% of total time)
+Total Data Block Read: 52.036 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 9321, Positive: 9162 (98.3%), Negative: 159 (1.7%)
+-- Final Summary --
+Memory Operations: 1584.8 ms (23.8% of total time)
+In-disk LSM Searching: 4612.786 ms (69.4% of total time)
+Level 0 Operations: 2148.395 ms (32.3% of total time)
+Other Levels Operations: 664.335 ms (10.0% of total time)
+==============================================
+----------------------------
+2025-10-13 16:40:43 ... thread 0: (200000,1600000) ops and (67971.7,22315.7) ops/second in (2.942399,71.698424) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     7     455      30        0        0      4096      4096      0      10    55     0       0     0      0    10         1 0.000000 65.019473
+    1    13     751      45     6853     6853      6853      6853      0      18    25     0       0     0     52    18        22 65.019473 7.085581
+    2    46    2889      26     4036     4036      4036      4036      0       0     0     0       0     0     39     0         0 7.085581 0.000000
+user_io:4004.330MB (L0 writes after deduplicate:4095.239MB)  total_ios: 14984.490MB WriteAmplification: 3.7421
+leveldb statistical: 1600000 operations (real operations: 0) have been finished (user has been written 2083458004.507 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 593142
+Total Get Time: 7364.615 ms
+Average Get Time: 0.012 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 593142 ops, 1264.640 ms, 2.132 μs/op (17.2% of total)
+Immutable Lookups: 342647 ops, 517.206 ms, 1.509 μs/op (7.0% of total)
+
+--- File Metadata Search ---
+Overall file checking: 318140 ops, 5076.075 ms, 15.955 μs/op (68.9% of total)
+  - Level 0 Metadata Search: 318140 ops, 181.951 ms, 0.571 μs/op (2.5% of total)
+  L0: 284940 searches, 3379.73 ms, 11.86 μs/search
+  - Other Levels Metadata Search: 525056 ops, 147.85 ms, 0.28 μs/op (2.0% of total)
+  L1: 300646 searches, 613.38 ms, 2.04 μs/search
+  L2: 224352 searches, 507.77 ms, 2.26 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 1277295 ops, 273.848 ms, 0.214 μs/op (3.7% of total, 11.8% of level)
+Index Block Search: 1277295 ops, 1993.084 ms, 1.560 μs/op (27.1% of total, 86.2% of level)
+Data Block Read: 8235 ops, 46.120 ms, 5.600 μs/op (0.6% of total, 2.0% of level)
+-- Bloom Filter Results --
+Total: 8235, Positive: 8152 (99.0%), Negative: 83 (1.0%)
+-- Level 0 Summary --
+Total Time: 2313.1 ms (31.4% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 489856 ops, 94.276 ms, 0.192 μs/op (1.3% of total, 12.2% of level)
+Index Block Search: 489856 ops, 665.737 ms, 1.359 μs/op (9.0% of total, 86.5% of level)
+Data Block Read: 2025 ops, 9.654 ms, 4.767 μs/op (0.1% of total, 1.3% of level)
+-- Bloom Filter Results --
+Total: 2025, Positive: 1925 (95.1%), Negative: 100 (4.9%)
+-- Other Levels Summary --
+Total Time: 769.7 ms (10.5% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 368.124 ms (5.0% of total time)
+Total Index Block Search: 2658.821 ms (36.1% of total time)
+Total Data Block Read: 55.775 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 10260, Positive: 10077 (98.2%), Negative: 183 (1.8%)
+-- Final Summary --
+Memory Operations: 1781.8 ms (24.2% of total time)
+In-disk LSM Searching: 5076.075 ms (68.9% of total time)
+Level 0 Operations: 2313.052 ms (31.4% of total time)
+Other Levels Operations: 769.668 ms (10.5% of total time)
+==============================================
+----------------------------
+2025-10-13 16:40:54 ... thread 0: (200000,1800000) ops and (18397.7,21799.9) ops/second in (10.870945,82.569369) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     6     390      34        0        0      4616      4616      0      11    64     0       0     0      0    11         1 0.000000 65.019473
+    1    19    1140      52     8029     8029      8028      8028      0      21    28     0       0     0     62    21        22 65.019473 7.085581
+    2    49    3085      29     4492     4492      4491      4491      0       0     0     0       0     0     46     0         0 7.085581 0.000000
+user_io:4512.817MB (L0 writes after deduplicate:4615.263MB)  total_ios: 17135.579MB WriteAmplification: 3.7971
+leveldb statistical: 1800000 operations (real operations: 0) have been finished (user has been written 2638704800.728 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 666892
+Total Get Time: 8305.983 ms
+Average Get Time: 0.012 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 666892 ops, 1424.906 ms, 2.136 μs/op (17.2% of total)
+Immutable Lookups: 385460 ops, 585.904 ms, 1.520 μs/op (7.1% of total)
+
+--- File Metadata Search ---
+Overall file checking: 357884 ops, 5723.999 ms, 15.994 μs/op (68.9% of total)
+  - Level 0 Metadata Search: 357884 ops, 205.035 ms, 0.572 μs/op (2.5% of total)
+  L0: 324679 searches, 3789.84 ms, 11.67 μs/search
+  - Other Levels Metadata Search: 602983 ops, 172.92 ms, 0.29 μs/op (2.1% of total)
+  L1: 339692 searches, 675.90 ms, 1.99 μs/search
+  L2: 263233 searches, 600.17 ms, 2.28 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 1412872 ops, 306.675 ms, 0.217 μs/op (3.7% of total, 11.8% of level)
+Index Block Search: 1412872 ops, 2234.205 ms, 1.581 μs/op (26.9% of total, 86.2% of level)
+Data Block Read: 9300 ops, 52.207 ms, 5.613 μs/op (0.6% of total, 2.0% of level)
+-- Bloom Filter Results --
+Total: 9300, Positive: 9203 (99.0%), Negative: 97 (1.0%)
+-- Level 0 Summary --
+Total Time: 2593.1 ms (31.2% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 557037 ops, 106.889 ms, 0.191 μs/op (1.3% of total, 12.2% of level)
+Index Block Search: 557037 ops, 757.000 ms, 1.358 μs/op (9.1% of total, 86.5% of level)
+Data Block Read: 2450 ops, 11.760 ms, 4.800 μs/op (0.1% of total, 1.3% of level)
+-- Bloom Filter Results --
+Total: 2450, Positive: 2292 (93.6%), Negative: 158 (6.4%)
+-- Other Levels Summary --
+Total Time: 875.6 ms (10.5% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 413.564 ms (5.0% of total time)
+Total Index Block Search: 2991.205 ms (36.0% of total time)
+Total Data Block Read: 63.968 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 11750, Positive: 11495 (97.8%), Negative: 255 (2.2%)
+-- Final Summary --
+Memory Operations: 2010.8 ms (24.2% of total time)
+In-disk LSM Searching: 5723.999 ms (68.9% of total time)
+Level 0 Operations: 2593.088 ms (31.2% of total time)
+Other Levels Operations: 875.649 ms (10.5% of total time)
+==============================================
+----------------------------
+2025-10-13 16:41:10 ... thread 0: (200000,2000000) ops and (13389.9,20511.6) ops/second in (14.936577,97.505946) seconds
+                               Compactions
+Level Files Size(M) Time(s) ReadH(M) ReadC(M) WriteH(M) WriteC(M) m_comp si_comp ifile pfile se_comp ifiles pfiles comps triv_move t_last_b t_next_b
+--------------------------------------------------
+    0     4     260      37        0        0      5136      5136      0      12    74     0       0     0      0    12         1 0.000000 65.019473
+    1    28    1637      61     9571     9571      9571      9571      0      24    31     0       0     0     76    24        22 65.019473 7.085581
+    2    52    3238      34     5166     5166      5165      5165      0       0     0     0       0     0     58     0         0 7.085581 0.000000
+user_io:5021.303MB (L0 writes after deduplicate:5135.294MB)  total_ios: 19872.149MB WriteAmplification: 3.9576
+leveldb statistical: 2000000 operations (real operations: 0) have been finished (user has been written 3257137548.078 MB data into db.)
+
+
+--- Performance Profile ---
+=== LevelDB Get Performance Report ===
+Total Get Operations: 741092
+Total Get Time: 9361.372 ms
+Average Get Time: 0.013 ms
+
+--- In-Memory MemTables ---
+Memtable Lookups: 741092 ops, 1602.616 ms, 2.162 μs/op (17.1% of total)
+Immutable Lookups: 427952 ops, 646.365 ms, 1.510 μs/op (6.9% of total)
+
+--- File Metadata Search ---
+Overall file checking: 397505 ops, 6469.082 ms, 16.274 μs/op (69.1% of total)
+  - Level 0 Metadata Search: 397505 ops, 230.368 ms, 0.579 μs/op (2.5% of total)
+  L0: 355796 searches, 4255.82 ms, 11.96 μs/search
+  - Other Levels Metadata Search: 680647 ops, 203.52 ms, 0.30 μs/op (2.2% of total)
+  L1: 378664 searches, 764.33 ms, 2.02 μs/search
+  L2: 301925 searches, 697.73 ms, 2.31 μs/search
+
+=== LEVEL 0 OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 1537685 ops, 344.039 ms, 0.223 μs/op (3.7% of total, 11.8% of level)
+Index Block Search: 1537685 ops, 2510.869 ms, 1.632 μs/op (26.8% of total, 86.2% of level)
+Data Block Read: 10224 ops, 58.472 ms, 5.719 μs/op (0.6% of total, 2.0% of level)
+-- Bloom Filter Results --
+Total: 10224, Positive: 10115 (98.9%), Negative: 109 (1.1%)
+-- Level 0 Summary --
+Total Time: 2913.4 ms (31.1% of total time)
+
+=== OTHER LEVELS OPERATIONS ===
+-- File System Operations --
+File Open: No operations
+Table Open: No operations
+-- Data Block Operations --
+Bloom Filter Check: 632671 ops, 122.509 ms, 0.193 μs/op (1.3% of total, 12.2% of level)
+Index Block Search: 632671 ops, 869.973 ms, 1.375 μs/op (9.3% of total, 86.3% of level)
+Data Block Read: 3254 ops, 15.439 ms, 4.744 μs/op (0.2% of total, 1.5% of level)
+-- Bloom Filter Results --
+Total: 3254, Positive: 2999 (92.2%), Negative: 255 (7.8%)
+-- Other Levels Summary --
+Total Time: 1007.9 ms (10.8% of total time)
+
+=== COMBINED STATISTICS ===
+-- Combined Operation Times --
+Total File Open: No time consumed
+Total Table Open: No time consumed
+Total Bloom Filter Check: 466.548 ms (5.0% of total time)
+Total Index Block Search: 3380.842 ms (36.1% of total time)
+Total Data Block Read: 73.911 ms (0.8% of total time)
+-- Combined Bloom Filter Results --
+Total Checks: 13478, Positive: 13114 (97.3%), Negative: 364 (2.7%)
+-- Final Summary --
+Memory Operations: 2249.0 ms (24.0% of total time)
+In-disk LSM Searching: 6469.082 ms (69.1% of total time)
+Level 0 Operations: 2913.380 ms (31.1% of total time)
+Other Levels Operations: 1007.921 ms (10.8% of total time)
+==============================================
+----------------------------
+Total bytes written: 0
+2000000 operations have been finished (3257137548.078 MB data have been written into db)
+clusterQuery :      48.753 micros/op 20511 ops/sec; 33404501.8 MB/s
+WRITE: Microseconds per op:
+Count: 1258908  Average: 70.2148  StdDev: 940.27
+Percentiles: P50: 14.69 P75: 15.78 P99: 1156.56 P99.9: 1197.20 P99.99: 1378.74
+------------------------------------------------------
+[      10,      12 )    6663   0.529%   0.529% 
+[      12,      14 )  424398  33.712%  34.241% #######
+[      14,      16 )  575784  45.737%  79.978% #########
+[      16,      18 )  106630   8.470%  88.448% ##
+[      18,      20 )   34972   2.778%  91.226% #
+[      20,      25 )   25524   2.027%  93.253% 
+[      25,      30 )    5306   0.421%  93.675% 
+[      30,      35 )   12700   1.009%  94.683% 
+[      35,      40 )    3392   0.269%  94.953% 
+[      40,      45 )    1158   0.092%  95.045% 
+[      45,      50 )     981   0.078%  95.123% 
+[      50,      60 )    3188   0.253%  95.376% 
+[      60,      70 )     733   0.058%  95.434% 
+[      70,      80 )     209   0.017%  95.451% 
+[      80,      90 )      69   0.005%  95.456% 
+[      90,     100 )      59   0.005%  95.461% 
+[     100,     120 )     148   0.012%  95.473% 
+[     120,     140 )      94   0.007%  95.480% 
+[     140,     160 )      25   0.002%  95.482% 
+[     160,     180 )      34   0.003%  95.485% 
+[     180,     200 )      83   0.007%  95.491% 
+[     200,     250 )     453   0.036%  95.527% 
+[     250,     300 )      38   0.003%  95.530% 
+[     300,     350 )      19   0.002%  95.532% 
+[     350,     400 )       3   0.000%  95.532% 
+[     400,     450 )       3   0.000%  95.532% 
+[     450,     500 )       1   0.000%  95.533% 
+[     600,     700 )       2   0.000%  95.533% 
+[     700,     800 )       1   0.000%  95.533% 
+[    1000,    1200 )   55760   4.429%  99.962% #
+[    1200,    1400 )     394   0.031%  99.993% 
+[    1400,    1600 )       5   0.000%  99.994% 
+[    1800,    2000 )       2   0.000%  99.994% 
+[    2000,    2500 )       1   0.000%  99.994% 
+[    2500,    3000 )       2   0.000%  99.994% 
+[    4000,    4500 )       2   0.000%  99.994% 
+[    4500,    5000 )       1   0.000%  99.994% 
+[    5000,    6000 )       5   0.000%  99.995% 
+[    7000,    8000 )       1   0.000%  99.995% 
+[    8000,    9000 )       2   0.000%  99.995% 
+[    9000,   10000 )       4   0.000%  99.995% 
+[   10000,   12000 )       4   0.000%  99.996% 
+[   12000,   14000 )       6   0.000%  99.996% 
+[   14000,   16000 )       3   0.000%  99.996% 
+[   16000,   18000 )       3   0.000%  99.997% 
+[   18000,   20000 )       5   0.000%  99.997% 
+[   20000,   25000 )       1   0.000%  99.997% 
+[   60000,   70000 )       1   0.000%  99.997% 
+[   70000,   80000 )       1   0.000%  99.997% 
+[   90000,  100000 )       1   0.000%  99.997% 
+[  100000,  120000 )       1   0.000%  99.997% 
+[  120000,  140000 )       5   0.000%  99.998% 
+[  140000,  160000 )       9   0.001%  99.998% 
+[  160000,  180000 )       5   0.000%  99.999% 
+[  180000,  200000 )       7   0.001%  99.999% 
+[  200000,  250000 )       7   0.001% 100.000% 
+
+POINT_QUERY: Microseconds per op:
+Count: 741092  Average: 12.2952  StdDev: 24.50
+Percentiles: P50: 9.16 P75: 17.69 P99: 115.18 P99.9: 138.56 P99.99: 244.02
+------------------------------------------------------
+[       0,       1 )       1   0.000%   0.000% 
+[       1,       2 )   48874   6.595%   6.595% #
+[       2,       3 )  157456  21.246%  27.841% ####
+[       3,       4 )   70250   9.479%  37.321% ##
+[       4,       5 )   31667   4.273%  41.594% #
+[       5,       6 )   19746   2.664%  44.258% #
+[       6,       7 )   12974   1.751%  46.009% 
+[       7,       8 )   15094   2.037%  48.046% 
+[       8,       9 )   11949   1.612%  49.658% 
+[       9,      10 )   15591   2.104%  51.762% 
+[      10,      12 )   33343   4.499%  56.261% #
+[      12,      14 )   48191   6.503%  62.764% #
+[      14,      16 )   48989   6.610%  69.374% #
+[      16,      18 )   49425   6.669%  76.043% #
+[      18,      20 )   50989   6.880%  82.923% #
+[      20,      25 )   95937  12.945%  95.869% ###
+[      25,      30 )    6813   0.919%  96.788% 
+[      30,      35 )    2994   0.404%  97.192% 
+[      35,      40 )    1724   0.233%  97.425% 
+[      40,      45 )     901   0.122%  97.546% 
+[      45,      50 )     880   0.119%  97.665% 
+[      50,      60 )    1119   0.151%  97.816% 
+[      60,      70 )     392   0.053%  97.869% 
+[      70,      80 )     279   0.038%  97.907% 
+[      80,      90 )     181   0.024%  97.931% 
+[      90,     100 )     462   0.062%  97.993% 
+[     100,     120 )    9827   1.326%  99.319% 
+[     120,     140 )    4636   0.626%  99.945% 
+[     140,     160 )     149   0.020%  99.965% 
+[     160,     180 )     100   0.013%  99.979% 
+[     180,     200 )      62   0.008%  99.987% 
+[     200,     250 )      26   0.004%  99.990% 
+[     250,     300 )      12   0.002%  99.992% 
+[     300,     350 )       7   0.001%  99.993% 
+[     350,     400 )       6   0.001%  99.994% 
+[     400,     450 )       6   0.001%  99.995% 
+[     450,     500 )       5   0.001%  99.995% 
+[     600,     700 )       4   0.001%  99.996% 
+[     700,     800 )       3   0.000%  99.996% 
+[     800,     900 )       1   0.000%  99.996% 
+[     900,    1000 )       1   0.000%  99.996% 
+[    1000,    1200 )       2   0.000%  99.997% 
+[    1200,    1400 )       2   0.000%  99.997% 
+[    1400,    1600 )       2   0.000%  99.997% 
+[    1600,    1800 )       2   0.000%  99.998% 
+[    1800,    2000 )       2   0.000%  99.998% 
+[    2000,    2500 )       4   0.001%  99.998% 
+[    2500,    3000 )       2   0.000%  99.999% 
+[    3000,    3500 )       5   0.001%  99.999% 
+[    3500,    4000 )       2   0.000% 100.000% 
+[    4000,    4500 )       1   0.000% 100.000% 
+[    5000,    6000 )       2   0.000% 100.000% 
+
+(null): Microseconds per op:
+Count: 2000000  Average: 48.7530  StdDev: 746.67
+Percentiles: P50: 14.33 P75: 15.93 P99: 1130.07 P99.9: 1194.63 P99.99: 1352.53
+------------------------------------------------------
+[       0,       1 )       1   0.000%   0.000% 
+[       1,       2 )   48874   2.444%   2.444% 
+[       2,       3 )  157456   7.873%  10.317% ##
+[       3,       4 )   70250   3.513%  13.829% #
+[       4,       5 )   31667   1.583%  15.412% 
+[       5,       6 )   19746   0.987%  16.400% 
+[       6,       7 )   12974   0.649%  17.048% 
+[       7,       8 )   15094   0.755%  17.803% 
+[       8,       9 )   11949   0.597%  18.401% 
+[       9,      10 )   15591   0.780%  19.180% 
+[      10,      12 )   40006   2.000%  21.180% 
+[      12,      14 )  472589  23.629%  44.810% #####
+[      14,      16 )  624773  31.239%  76.049% ######
+[      16,      18 )  156055   7.803%  83.851% ##
+[      18,      20 )   85961   4.298%  88.149% #
+[      20,      25 )  121461   6.073%  94.222% #
+[      25,      30 )   12119   0.606%  94.828% 
+[      30,      35 )   15694   0.785%  95.613% 
+[      35,      40 )    5116   0.256%  95.869% 
+[      40,      45 )    2059   0.103%  95.972% 
+[      45,      50 )    1861   0.093%  96.065% 
+[      50,      60 )    4307   0.215%  96.280% 
+[      60,      70 )    1125   0.056%  96.336% 
+[      70,      80 )     488   0.024%  96.361% 
+[      80,      90 )     250   0.013%  96.373% 
+[      90,     100 )     521   0.026%  96.399% 
+[     100,     120 )    9975   0.499%  96.898% 
+[     120,     140 )    4730   0.237%  97.135% 
+[     140,     160 )     174   0.009%  97.143% 
+[     160,     180 )     134   0.007%  97.150% 
+[     180,     200 )     145   0.007%  97.157% 
+[     200,     250 )     479   0.024%  97.181% 
+[     250,     300 )      50   0.003%  97.184% 
+[     300,     350 )      26   0.001%  97.185% 
+[     350,     400 )       9   0.000%  97.185% 
+[     400,     450 )       9   0.000%  97.186% 
+[     450,     500 )       6   0.000%  97.186% 
+[     600,     700 )       6   0.000%  97.187% 
+[     700,     800 )       4   0.000%  97.187% 
+[     800,     900 )       1   0.000%  97.187% 
+[     900,    1000 )       1   0.000%  97.187% 
+[    1000,    1200 )   55762   2.788%  99.975% #
+[    1200,    1400 )     396   0.020%  99.995% 
+[    1400,    1600 )       7   0.000%  99.995% 
+[    1600,    1800 )       2   0.000%  99.995% 
+[    1800,    2000 )       4   0.000%  99.995% 
+[    2000,    2500 )       5   0.000%  99.996% 
+[    2500,    3000 )       4   0.000%  99.996% 
+[    3000,    3500 )       5   0.000%  99.996% 
+[    3500,    4000 )       2   0.000%  99.996% 
+[    4000,    4500 )       3   0.000%  99.996% 
+[    4500,    5000 )       1   0.000%  99.996% 
+[    5000,    6000 )       7   0.000%  99.997% 
+[    7000,    8000 )       1   0.000%  99.997% 
+[    8000,    9000 )       2   0.000%  99.997% 
+[    9000,   10000 )       4   0.000%  99.997% 
+[   10000,   12000 )       4   0.000%  99.997% 
+[   12000,   14000 )       6   0.000%  99.998% 
+[   14000,   16000 )       3   0.000%  99.998% 
+[   16000,   18000 )       3   0.000%  99.998% 
+[   18000,   20000 )       5   0.000%  99.998% 
+[   20000,   25000 )       1   0.000%  99.998% 
+[   60000,   70000 )       1   0.000%  99.998% 
+[   70000,   80000 )       1   0.000%  99.998% 
+[   90000,  100000 )       1   0.000%  99.998% 
+[  100000,  120000 )       1   0.000%  99.998% 
+[  120000,  140000 )       5   0.000%  99.999% 
+[  140000,  160000 )       9   0.000%  99.999% 
+[  160000,  180000 )       5   0.000%  99.999% 
+[  180000,  200000 )       7   0.000% 100.000% 
+[  200000,  250000 )       7   0.000% 100.000% 
+
+
+========================================
+=== VersionSet Destructor Called ===
+========================================
+Current version refs before Unref: 2
+
+--- Ref/Unref Statistics ---
+1. DBImpl::Get:
+   Refs:   0
+   Unrefs: 0
+   Diff:   0 
+2. Builder (Compaction):
+   Refs:   140
+   Unrefs: 140
+   Diff:   0 
+3. PickCompaction:
+   Refs:   59
+   Unrefs: 59
+   Diff:   0 
+4. Append (LogAndApply):
+   Refs:   140
+   Unrefs: 139
+   Diff:   1 <-- LEAK!
+5. MemTable operations:
+   Refs:   0
+   Unrefs: 0
+   Diff:   0 
+6. ApproximateOffsetOf:
+   Refs:   0
+   Unrefs: 0
+   Diff:   0 
+
+--- Total Statistics ---
+Total tracked Refs:   339
+Total tracked Unrefs: 338
+Total Diff:           1
+
+--- Version List Check ---
+!!! Version list is NOT EMPTY !!!
+Leaked versions in the list:
+  [1] Version 0x59d87df3b1d0, refs=2
+Total leaked versions: 1
+
+--- Now calling current_->Unref() ---
+current_->Unref() completed
+
+--- After current_->Unref() ---
+!!! Version list STILL NOT EMPTY after current_->Unref() !!!
+This means there are OTHER versions leaked, not just current_
+  [1] Remaining Version 0x59d87df3b1d0, refs=1
+
+========================================
+=== Assertion Check ===
+========================================
+db_bench: /home/jeff-wang/LSM-tuning/SATune/db/version_set.cc:997: leveldb::VersionSet::~VersionSet(): Assertion `dummy_versions_.next_ == &dummy_versions_' failed.

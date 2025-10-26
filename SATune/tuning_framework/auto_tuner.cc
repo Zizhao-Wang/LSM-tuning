@@ -170,23 +170,14 @@ namespace leveldb{
       return false;
     } 
 
-    // fprintf(stdout, "Check the state!\n");
-    // if(!is_first_l0_compaction){
-    //   // fprintf(stdout,"[Tuning Info] System not ready for tuning (L0 files:). Waiting...\n");
-    //   return false;
-    // }
-
     Logger* tuning_log_ = db_im->GetTuningLogger();
     CompactionOptionsAtomic* compaction_Options = db_im->GetCompactionOptions();
-    // the following variables are used record the final setting parameters
-    TuningResult result;
-    
-    bool is_the_first_tuning_try = false;
+    TuningResult result; // This is used to record the final setting parameters
+
     auto batch_stats = EndBatchStats();
     if(is_tuning){
       // profiler_->GetStats().PrintThroughputStats(batch_stats);
       if (cumulative_current_throughput_.Iops_per_sec == 0 && cumulative_last_throughput_.Iops_per_sec == 0) {
-        
         // set the "current"
         cumulative_last_throughput_= batch_stats;
         lastbatch_throughput_= batch_stats;
@@ -194,11 +185,10 @@ namespace leveldb{
         // set the "stall" statistics
         cumulative_last_stall_ = db_im->GetL0StallStats();
         lastbatch_stall_ = db_im->GetL0StallStats();
-        is_the_first_tuning_try = true;
-        fprintf(stdout, "[Batch Info] The first batch data is setted - OPS: %.2f\n", cumulative_last_throughput_.Iops_per_sec);
-        Log(tuning_log_,"[Batch Info] The first batch data is setted - OPS: %.2f\n", cumulative_last_throughput_.Iops_per_sec); 
+        fprintf(stdout, "[Batch Info] The 1-th batch data is setted - IOPS: %.2f\n", cumulative_last_throughput_.Iops_per_sec);
+        Log(tuning_log_,"[Batch Info] The 1-th batch data is setted - IOPS: %.2f\n", cumulative_last_throughput_.Iops_per_sec); 
       } else {
-        // 已有基准，更新"current"用于后续比较
+        // A baseline has been established; update “current” for subsequent comparisons.
         cumulative_last_throughput_= cumulative_current_throughput_;
         lastbatch_throughput_= lastbatch_throughput_;
 
@@ -216,91 +206,39 @@ namespace leveldb{
       }
       // start a new batch if the last batch ended.
       StartBatch();
-    }else{
-      // during the process from last compaction to next compaction, if we found that the performance degrades, we should...
-      if (cumulative_last_throughput_.Iops_per_sec != 0 && (batch_stats.Iops_per_sec / cumulative_last_throughput_.Iops_per_sec - 1.0)<-0.1){
-        fprintf(stdout,"something wrong!\n");
-        exit(0);
-      }
-    }    
-
-    // Now we need to do somethings to tune the LSM-tree?
-    // Now I think we have two choices:
-    // 1. No stall, if read operations exist, we should lower the CT0
-    uint64_t total_write_time =  profiler_->GetStats().GetWriteTime(); // nanoseconds
-    uint64_t total_stall_time =  cumulative_current_stall_.total_slow_or_stop_time.load(); //microsseconds
-    // 转换write_time从纳秒到微秒用于比较
-    uint64_t total_write_time_us = total_write_time / 1000;
-    // 计算stall占write时间的百分比
-    double stall_vs_write_time = (total_write_time_us > 0) ? ((double)total_stall_time / (double)total_write_time_us) * 100.0 : 0.0;
+    }   
     
     // if we found that the actual "number_of_l0_files" > pre-defined(pre-tuned) "compaction_Options->level0_compaction_trigger"
     // then we should reduce the "C1" to the last setted value
     // we should not evaluate the trade-offs between "unexpected increased stalls and unexpected reads latency because of increased number_of_l0_files" 
     // and "the benefit of read performance because of decrease number_of_levels in the LSM-tree".
     // obviously, it's not a deserved trade-off.
-    
     if(is_tuning){
-
-      const VersionSet* get_versionset_ =  db_im->GetVersionSet();
-      int current_actual_l1_size =  get_versionset_->NumLevelBytes(1);
-
-      //before starting the tuning programing, we need to record the old (may not) parameters in the "tuning_records_" structure 
-      tuning_records_.StartTuning(compaction_Options->level0_compaction_trigger.load(),
-        compaction_Options->max_bytes_for_level1_base.load(), compaction_Options->max_bytes_for_level1_multiplier.load());
-
-      // Step 1: check if the number_of_l0_files exceeds the level0_compaction_trigger
-      // Based on our setting of "CO, SLOW_DOWN, STOP", only one possible way can lead to the stall or unexpected L0_trigger
-      // that is increased "L1"(C1) leads to unexpected "num_l0_files"
-      // if this situation happens, it means we need to decrease the "C1"
-      if(currentbatch_stall_.l0_exceed_total_files.load()>0 || currentbatch_stall_.l0_exceed_trigger_count.load()>0){
-        fprintf(stdout, "[L0 Overflow Statistics]: total_l0_exceed_files=%lu, total_stall_trigger_count=%lu the l0_max_exceeded_files=%lu\n", 
-          currentbatch_stall_.l0_exceed_total_files.load(),currentbatch_stall_.l0_exceed_trigger_count.load(), currentbatch_stall_.l0_max_exceeded_files.load());
-        Log(tuning_log_,"[L0 Overflow Statistics]: total_l0_exceed_files=%lu, total_stall_trigger_count=%lu the l0_max_exceeded_files=%lu\n", 
-          currentbatch_stall_.l0_exceed_total_files.load(),currentbatch_stall_.l0_exceed_trigger_count.load(), currentbatch_stall_.l0_max_exceeded_files.load()); 
-        int l0_exceed_number = currentbatch_stall_.l0_max_exceeded_files.load() - compaction_Options->level0_compaction_trigger.load();
-        
-        // basically, we have two possible ways to face this situation:
-        // 1. We can tune to the last setting if it was changed or setted in last time (the first loop)
-        // 2. We can appropriately reduce a little bit for the L1_SIZE (max_bytes_for_level1_base)
-        //definitely, we need to reduce the "max_bytes_for_level1_base", the input parameter should be "0x00000002"
-        if (tuning_records_.IsSpecificParamModified(0x00000002)) { 
-          result.needs_change = true;
-          int new_C1 = tuning_records_.old_l1_size;
-          // compaction_Options->max_bytes_for_level1_base.store(new_C1);
-          result.new_l1_size = new_C1;
-          fprintf(stdout, "[L1 Rollback] Reverting L1 to previous value: %d\n", result.new_l1_size);
-        }else{
-          // It means that the current status of "L1" is a little bit higher, we may need to reduce the unexpected "L1 increase"
-          if(tuning_records_.actual_l1_size < current_actual_l1_size){
-            int setted_l1 = compaction_Options->max_bytes_for_level1_base;
-            // 计算 L1 实际大小的增长百分比
-            double growth_ratio = (double)(current_actual_l1_size - tuning_records_.actual_l1_size) / tuning_records_.actual_l1_size;
-            // 按照相同的百分比缩小 setted_l1
-            // 例如：如果 L1 实际增长了 20%，就把 setted_l1 减少 20%
-            double reduction_factor = 1.0 - growth_ratio;
-            // 确保 reduction_factor 在合理范围内（比如不能减少超过 50%）
-            reduction_factor = std::max(0.5, reduction_factor);
-            result.new_l1_size = (int)(setted_l1 * reduction_factor);
-            fprintf(stdout, "[L1 Adjustment] Actual L1 grew %.1f%% (%u→%u) (%.1fMiB→%.1fMiB), reducing target %d→%d (%.1fMiB→%.1fMiB)\n",
-              growth_ratio * 100, tuning_records_.actual_l1_size, current_actual_l1_size,tuning_records_.actual_l1_size / (1048576.0), 
-              current_actual_l1_size / (1048576.0), setted_l1, result.new_l1_size,setted_l1 / (1048576.0), result.new_l1_size / (1048576.0));
-            Log(tuning_log_, "[L1 Adjustment] Actual L1 grew %.1f%% (%u→%u) (%.1fMiB→%.1fMiB), reducing target %d→%d (%.1fMiB→%.1fMiB)\n",
-              growth_ratio * 100, tuning_records_.actual_l1_size, current_actual_l1_size,tuning_records_.actual_l1_size / (1048576.0), 
-              current_actual_l1_size / (1048576.0),setted_l1, result.new_l1_size,setted_l1 / (1048576.0), result.new_l1_size / (1048576.0));
-          }else{
-            fprintf(stdout, "[L1 Check] No adjustment needed (actual=%u, target=%lu)\n", current_actual_l1_size, compaction_Options->max_bytes_for_level1_base.load());
-            Log(tuning_log_, "[L1 Check] No adjustment needed (actual=%u, target=%lu)\n", current_actual_l1_size, compaction_Options->max_bytes_for_level1_base.load());
-          }
-        }
-      }
-      
-      //Step 2:check if write stall does not happens. If happens, just decrease the level0_compaction_trigger
-      //If in the first loop, we should not start a try for tuning. 
-      uint64_t total_ops = profiler_->GetStats().total_get_count.load()+profiler_->GetStats().total_get_count.load();
+      //Step 1:In the first loop, we just start a try for tuning. 
+      uint64_t total_ops = profiler_->GetStats().total_get_count.load()+profiler_->GetStats().total_put_count.load();
       double read_ratio = profiler_->GetStats().total_get_count.load() / (double)total_ops;
 
       if(is_the_first_tuning_try){
+        FlushStats* stats_ptr = db_im->GetFlushStats();
+        stats_ptr->CalculateCV();
+        
+        uint64_t C0_base_size = stats_ptr->GetAverageFileSizeinL0();
+        if (C0_base_size == 0) {
+          C0_base_size = 1048576; 
+        }
+        
+        double CVcap = 1.0;
+        double alpha = 1.0;
+        double CV_raw = stats_ptr->pooled.CV;
+        double CV_norm = std::min(CV_raw / CVcap, 1.0);
+        double scale_factor = 10.0 * (1.0 + alpha * CV_norm);
+        uint64_t C1_target = static_cast<uint64_t>(C0_base_size * scale_factor);
+
+        fprintf(stderr, "[L1 SIZE TUNING] CV_raw   = %.6f CVcap    = %.6f  CV_norm  = %.6f  alpha    = %.6f  scale    = %.6f  base_C0  = %.2f MB  target_C1= %.2f MB\n",
+        CV_raw, CVcap, CV_norm, alpha, scale_factor,
+        C0_base_size / 1048576.0, C1_target / 1048576.0);
+        exit(0);
+
         if(lastbatch_stall_.total_slow_or_stop_time==0){
           int old_C0 = compaction_Options->level0_compaction_trigger.load();
           if(old_C0 > 1){
@@ -325,6 +263,74 @@ namespace leveldb{
             tuning_num_stats++;
           }
         }
+        is_the_first_tuning_try = false;
+        return true;
+      }
+
+      // Step 2: check if the number_of_l0_files exceeds the level0_compaction_trigger
+      // Based on our setting of "CO, SLOW_DOWN, STOP", only one possible way can lead to the stall or unexpected L0_trigger
+      // that is increased "L1"(C1) leads to unexpected "num_l0_files"
+      // if this situation happens, it means we need to decrease the "C1"
+      const VersionSet* get_versionset_ =  db_im->GetVersionSet();
+      int current_actual_l1_size =  get_versionset_->NumLevelBytes(1);
+      //before starting the tuning programing, we need to record the old (may not) parameters in the "tuning_records_" structure 
+      tuning_records_.StartTuning(compaction_Options->level0_compaction_trigger.load(),
+        compaction_Options->max_bytes_for_level1_base.load(), compaction_Options->max_bytes_for_level1_multiplier.load());
+
+      if(currentbatch_stall_.l0_exceed_trigger_count.load()>50){
+        fprintf(stdout, "[L0 Overflow Statistics]: total_l0_exceed_files=%lu, total_stall_trigger_count=%lu the l0_max_exceeded_files=%lu\n", 
+          currentbatch_stall_.l0_exceed_total_files.load(),currentbatch_stall_.l0_exceed_trigger_count.load(), currentbatch_stall_.l0_max_exceeded_files.load());
+        Log(tuning_log_,"[L0 Overflow Statistics]: total_l0_exceed_files=%lu, total_stall_trigger_count=%lu the l0_max_exceeded_files=%lu\n", 
+          currentbatch_stall_.l0_exceed_total_files.load(),currentbatch_stall_.l0_exceed_trigger_count.load(), currentbatch_stall_.l0_max_exceeded_files.load()); 
+        int l0_exceed_number = currentbatch_stall_.l0_max_exceeded_files.load() - compaction_Options->level0_compaction_trigger.load();
+        
+        if(currentbatch_stall_.l0_max_exceeded_files <=1){
+          // two categories
+          // 1. reduce L1 if there are more than 2 active levels in the LSM
+          // 2. Do not proceed if less than 3 levels in the LSM
+          int active_levels = get_versionset_->GetActivaLevelsInLSM();
+          FlushStats* stats_ptr = db_im->GetFlushStats();
+          if(active_levels>=3){
+            //reduce the L1 by "Average FileSize in L0"
+            int new_C1 = compaction_Options->max_bytes_for_level1_base.load() - stats_ptr->GetAverageFileSizeinL0();
+            result.new_l1_size = new_C1;
+            tuning_num_stats++;
+          }
+        }else{
+          // basically, we have two possible ways to face this situation:
+          // 1. We can tune to the last setting if it was changed or setted in last time (the first loop)
+          // 2. We can appropriately reduce a little bit for the L1_SIZE (max_bytes_for_level1_base)
+          //definitely, we need to reduce the "max_bytes_for_level1_base", the input parameter should be "0x00000002"
+          if (tuning_records_.IsSpecificParamModified(0x00000002)) { 
+            result.needs_change = true;
+            int new_C1 = tuning_records_.old_l1_size;
+            // compaction_Options->max_bytes_for_level1_base.store(new_C1);
+            result.new_l1_size = new_C1;
+            fprintf(stdout, "[L1 Rollback] Reverting L1 to previous value: %d\n", result.new_l1_size);
+          }else{
+            // It means that the current status of "L1" is a little bit higher, we may need to reduce the unexpected "L1 increase"
+            if(tuning_records_.actual_l1_size < current_actual_l1_size){
+              int setted_l1 = compaction_Options->max_bytes_for_level1_base;
+              // 计算 L1 实际大小的增长百分比
+              double growth_ratio = (double)(current_actual_l1_size - tuning_records_.actual_l1_size) / tuning_records_.actual_l1_size;
+              // 按照相同的百分比缩小 setted_l1
+              // 例如：如果 L1 实际增长了 20%，就把 setted_l1 减少 20%
+              double reduction_factor = 1.0 - growth_ratio;
+              // 确保 reduction_factor 在合理范围内（比如不能减少超过 50%）
+              reduction_factor = std::max(0.5, reduction_factor);
+              result.new_l1_size = (int)(setted_l1 * reduction_factor);
+              fprintf(stdout, "[L1 Adjustment] Actual L1 grew %.1f%% (%u→%u) (%.1fMiB→%.1fMiB), reducing target %d→%d (%.1fMiB→%.1fMiB)\n",
+                growth_ratio * 100, tuning_records_.actual_l1_size, current_actual_l1_size,tuning_records_.actual_l1_size / (1048576.0), 
+                current_actual_l1_size / (1048576.0), setted_l1, result.new_l1_size,setted_l1 / (1048576.0), result.new_l1_size / (1048576.0));
+              Log(tuning_log_, "[L1 Adjustment] Actual L1 grew %.1f%% (%u→%u) (%.1fMiB→%.1fMiB), reducing target %d→%d (%.1fMiB→%.1fMiB)\n",
+                growth_ratio * 100, tuning_records_.actual_l1_size, current_actual_l1_size,tuning_records_.actual_l1_size / (1048576.0), 
+                current_actual_l1_size / (1048576.0),setted_l1, result.new_l1_size,setted_l1 / (1048576.0), result.new_l1_size / (1048576.0));
+            }else{
+              fprintf(stdout, "[L1 Check] No adjustment needed (actual=%u, target=%lu)\n", current_actual_l1_size, compaction_Options->max_bytes_for_level1_base.load());
+              Log(tuning_log_, "[L1 Check] No adjustment needed (actual=%u, target=%lu)\n", current_actual_l1_size, compaction_Options->max_bytes_for_level1_base.load());
+            }
+          }
+        }
       }
 
       // Step 3: If stall dose happens, evaluate the cost and benefit to determine the correct strategy
@@ -333,18 +339,39 @@ namespace leveldb{
       // when the first compaction of a specific level happens, we should evaluate the size?
        
       int stall_different = currentbatch_stall_.CalculateStallTimeDifference(lastbatch_stall_);
+      // Now we need to do somethings to tune the LSM-tree?
+      // Now I think we have two choices:
+      // 1. No stall, if read operations exist, we should lower the CT0
+      uint64_t total_write_time =  profiler_->GetStats().GetWriteTime(); // nanoseconds
+      uint64_t total_stall_time =  cumulative_current_stall_.total_slow_or_stop_time.load(); //microsseconds
+      // 转换write_time从纳秒到微秒用于比较
+      uint64_t total_write_time_us = total_write_time / 1000;
+      // 计算stall占write时间的百分比
+      double stall_vs_write_time = (total_write_time_us > 0) ? ((double)total_stall_time / (double)total_write_time_us) * 100.0 : 0.0;
 
       if(stall_different <= 0 && !level_first_creation[level]){
-        // It menas the first compaction in this level is triggered!
-        int old_C1 = compaction_Options->max_bytes_for_level1_base.load();
+        
+        if(level==1){
+          int old_C1 = compaction_Options->max_bytes_for_level1_base.load();
+          int new_C1 = old_C1+(50*1048576);
+          fprintf(stdout, "[First L%d->L%d  compaction]: The %lu-th tuning, Adjusting L1 size from %.2f MiB to %.2f MiB (read_ratio=%.2f)\n",level,level+1,tuning_num_stats+1, old_C1 / (1048576.0), new_C1 / (1048576.0), read_ratio);
+          Log(tuning_log_,"[First L%d->L%d first compaction]: The %lu-th tuning, Adjusting L1 size from %.2f MiB to %.2f MiB (read_ratio=%.2f)\n",level,level+1,tuning_num_stats+1, old_C1/ (1048576.0), new_C1 / (1048576.0), read_ratio);
+          result.new_l1_size = new_C1;
+        }else{
+          // that means we need to increase f
+          double old_f = compaction_Options->max_bytes_for_level1_multiplier.load();
+          double new_f = old_f+0.5;
+          fprintf(stdout, "[First L%d->L%d compaction]: The %lu-th tuning, Adjusting multiplier(F) from %.2f to %.2f (read_ratio=%.2f)\n",
+            level, level+1, tuning_num_stats+1, old_f, new_f, read_ratio);
+          Log(tuning_log_, "[First L%d->L%d first compaction]: The %lu-th tuning, Adjusting multiplier from %.2f to %.2f (read_ratio=%.2f)\n",
+            level, level+1, tuning_num_stats+1, old_f, new_f, read_ratio);
+          result.new_level_multiplier = new_f;
+        }
         result.needs_change = true;
-        int new_C1 = old_C1+(50*1048576);
-        fprintf(stdout, "[First L%d->L%d  compaction]: The %lu-th tuning, Adjusting L1 size from %d to %d (read_ratio=%.2f)\n",level,level+1,tuning_num_stats+1, old_C1, new_C1, read_ratio);
-        Log(tuning_log_,"[First L%d->L%d first compaction]: The %lu-th tuning, Adjusting L1 size from %d to %d (read_ratio=%.2f)\n",level,level+1,tuning_num_stats+1, old_C1, new_C1, read_ratio);
         // db_im->GetCompactionOptions()->SetL0TriggersCustom(new_C0);
-        result.new_l1_size = new_C1;
         tuning_num_stats++;
       }else if(stall_different <= 0 && level_first_creation[level]){
+        // It menas the first compaction in the "level" is triggered!
         // It means we are experiencing a normal tuning process?
         int old_C0 = compaction_Options->level0_compaction_trigger.load();
         if(old_C0 > 1){
@@ -356,36 +383,55 @@ namespace leveldb{
           result.new_l0_trigger = new_C0;
           tuning_num_stats++;
         }
-      }else{
+      }else if(stall_different > 0 && level_first_creation[level]){
+        // It menas the first compaction in the "level" is triggered!
+        if(level==1){
+          int old_C1 = compaction_Options->max_bytes_for_level1_base.load();
+          int new_C1 = old_C1-(50*1048576);
+          fprintf(stdout, "[First L%d->L%d compaction in stall]: The %lu-th tuning, Adjusting L1 size from %.2f MiB to %.2f MiB (read_ratio=%.2f)\n",level,level+1,tuning_num_stats+1, old_C1 / (1048576.0), new_C1 / (1048576.0), read_ratio);
+          Log(tuning_log_,"[First L%d->L%d compaction in stall]: The %lu-th tuning, Adjusting L1 size from %.2f MiB to %.2f MiB (read_ratio=%.2f)\n",level,level+1,tuning_num_stats+1, old_C1/ (1048576.0), new_C1 / (1048576.0), read_ratio);
+          result.new_l1_size = new_C1;
+        }else{
+          // that means we need to decrease "f"
+          double old_f = compaction_Options->max_bytes_for_level1_multiplier.load();
+          double new_f = old_f-0.5;
+          fprintf(stdout, "[First L%d->L%d compaction in stall]: The %lu-th tuning, Adjusting multiplier(F) from %.2f to %.2f (read_ratio=%.2f)\n",
+            level, level+1, tuning_num_stats+1, old_f, new_f, read_ratio);
+          Log(tuning_log_, "[First L%d->L%d compaction in stall]: The %lu-th tuning, Adjusting multiplier from %.2f to %.2f (read_ratio=%.2f)\n",
+            level, level+1, tuning_num_stats+1, old_f, new_f, read_ratio);
+          result.new_level_multiplier = new_f;
+        }
+        exit(0);
+      }else if(stall_different > 0 && !level_first_creation[level]){
         // It menas we are encountering an evaluated process to find an appropriate choice
         // Now, we need to re-evaluate the trade-off between "structures without tuning" and "structures with tuning"
         // If without tuning, the "total_elapsed_time"
-        double performance_with_tuning = currentbatch_throughput_.Iops_per_sec;
 
         // we need to estimate the performance when tuning is not applied.
         // specifically, we compare two part's performance
         // 1. degradation of write performance because of stall time
         // 2. improvement of read performance  because of tuning 
-        int reduced_l0 = tuning_records_.l0_trigger_delta;
-        int reduced_level = tuning_records_.l1_size_delta;
 
-        double average_read_time =  profiler_->GetStats().GetLevelAverageSearchTimeNs(1);
-
-        // int64_t average_l0_check_time = profiler_->GetStats().
-        // int64_t degradation_of_write = currentbatch_stall_.total_slow_or_stop_time;
-        // int64_t improvement_of_read = 
-        fprintf(stdout,"The stall condition does not meet the requirements!\n");
-        Log(tuning_log_,"The stall condition does not meet the requirements!\n");
+        // i.e., the average cost of a get operation by increasing a level.
+        double average_read_time_level = profiler_->GetStats().GetLevelAverageSearchTimeNs(level);
+        uint64_t level_search_count =  profiler_->GetStats().GetLevelSearchCount(level);
+        double benefit = (double)level_search_count * average_read_time_level;
+        fprintf(stdout, "[DEBUG] Level %d -> Stall Time Cost: %ld | Benefit: %.2f (Search Count: %lu * Avg Read Time: %.2f ns)\n",
+          level,total_stall_time,benefit,level_search_count, average_read_time_level);
+        
+        if(total_stall_time > benefit){
+          // add a level and reduce the size of "Level", cost > benefit
+          
+        }else{
+          // do not add a level, cost > benefit
+          
+        }
         exit(0);
       }
-      
-      if(is_the_first_tuning_try){
-        is_the_first_tuning_try = false;
-      }
-
       tuning_records_.EndTuning(result.new_l0_trigger,result.new_l1_size, result.new_level_multiplier, current_actual_l1_size );
     }
 
+    
     return true;
   }
 
@@ -406,13 +452,13 @@ namespace leveldb{
     }
 
     if (tuning_records_.has_pending_changes) {
-      fprintf(stdout, "[TUNING APPLIED] L0=%d(%+d), L1=%u(%+d), LM=%d(%+d) | Changed: 0x%X\n",
-        tuning_records_.new_l0_trigger, tuning_records_.l0_trigger_delta,tuning_records_.new_l1_size, tuning_records_.l1_size_delta,
-        tuning_records_.new_level_multiplier, tuning_records_.level_multiplier_delta, tuning_records_.changed_params);
-      Log(tuning_log_,"[TUNING APPLIED] L0=%d(%+d), L1=%u(%+d), LM=%d(%+d) | Changed: 0x%X\n \
+      fprintf(stdout, "[TUNING APPLIED] L0=%d(%+d), L1=%lu(%+d), LevelM=%.2f(%.2f)  | Changed: 0x%X\n",
+        compaction_Options->level0_compaction_trigger.load(), tuning_records_.l0_trigger_delta,compaction_Options->max_bytes_for_level1_base.load(), tuning_records_.l1_size_delta,
+        compaction_Options->max_bytes_for_level1_multiplier.load(), tuning_records_.level_multiplier_delta, tuning_records_.changed_params);
+      Log(tuning_log_,"[TUNING APPLIED] L0=%d(%+d), L1=%lu(%+d), LevelM=%.2f(%.2f) | Changed: 0x%X\n \
           [TUNING Finished] =======================================\n\n",
-        tuning_records_.new_l0_trigger, tuning_records_.l0_trigger_delta,tuning_records_.new_l1_size, tuning_records_.l1_size_delta,
-        tuning_records_.new_level_multiplier, tuning_records_.level_multiplier_delta, tuning_records_.changed_params);
+        compaction_Options->level0_compaction_trigger.load(), tuning_records_.l0_trigger_delta,compaction_Options->max_bytes_for_level1_base.load(), tuning_records_.l1_size_delta,
+        compaction_Options->max_bytes_for_level1_multiplier.load(), tuning_records_.level_multiplier_delta, tuning_records_.changed_params);
     }
 
   }

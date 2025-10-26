@@ -172,25 +172,31 @@ ThroughputStats PerformanceStats::GetTotalThroughputStats() const {
 }
 
 double PerformanceStats::GetLevelAverageSearchTimeNs(int level) const {
-    uint64_t count = 0;
-    uint64_t time_ns = 0;
+  uint64_t count = 0;
+  uint64_t time_ns = 0;
     
-    if (level == 0) {
-      count = level0_search_count.load();
-      time_ns = level0_search_time_ns.load();
-    } else if (level > 0 && level < 7) {
-      count = level_search_count[level].load();
-      time_ns = level_search_time_ns[level].load();
-    } else {
-      return 0.0;  // 无效的 level
-    }
-    
-    if (count == 0) {
-      return 0.0;  // 避免除零
-    }
-    
-    return static_cast<double>(time_ns) / count;
+  if (level == 0) {
+    count = level0_search_count.load();
+    time_ns = level0_search_time_ns.load();
+  } else if (level > 0 && level < 7) {
+    count = level_search_count[level].load();
+    time_ns = level_search_time_ns[level].load();
+  } else {
+    return 0.0;  // 无效的 level
   }
+    
+  if (count == 0) {
+    return 0.0;  // 避免除零
+  }
+    
+  return static_cast<double>(time_ns) / count;
+}
+
+uint64_t PerformanceStats::GetLevelSearchCount(int level) const {
+  uint64_t count = 0;
+  count = level_search_count[level].load();
+  return count;
+}
 
 
 // 实现格式化吞吐率报告的函数

@@ -3,8 +3,8 @@ cluster13   0.4565  get:0.38 set:0.62    ✅
 cluster25   0.9929  get:0.95 add:0.02 gets:0.02 cas:0.02 ✅
 cluster30   1.4259  get:0.99     ✅
 
-cluster40   1.4259  get:0.99     ✅
-cluster49   1.4259  get:0.99     ✅
+cluster40   0.8551  get:0.99     ✅
+cluster49   1.5095  get:0.99     ✅
 
 cluster51   1.9745  39G get:0.90 set:0.10 ✅
 cluster18   2.0994  75G get:0.96 add:0.01 gets:0.01 cas:0.01
@@ -12,3 +12,11 @@ cluster17   2.1106  52G
 cluster47   2.0637  58G
 
 cluster1    2.6774  get:0.99 ✅
+
+
+Selected traces for comparison in SATune
+1. cluster12 get:0.20 set:0.80 skewness:0.3048
+2. cluster13 get:0.38 set:0.62 skewness:0.4565
+3. cluster40 set:0.50 get:0.50 skewness:0.8551
+4. cluster48 set:0.35 get:0.65 skewness:0.8191
+5. cluster51 get:0.90 set:0.10 skewness:1.9745
