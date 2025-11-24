@@ -2558,6 +2558,161 @@ class Stats {
     }
   }
 
+  void FinishedOps(DBWithColumnFamilies* db_with_cfh, DB* db, int64_t num_ops,
+                   double op_duration_us = -1.0, enum OperationType op_type = kOthers) {
+    if (reporter_agent_) {
+      reporter_agent_->ReportFinishedOps(num_ops);
+    }
+    if (FLAGS_histogram) {
+      uint64_t now = clock_->NowMicros();
+      uint64_t micros;
+
+      if (op_duration_us >= 0.0) {
+        micros = static_cast<uint64_t>(op_duration_us);
+      } else {
+        micros = now - last_op_finish_;
+      }
+
+      if (hist_.find(op_type) == hist_.end()) {
+        auto hist_temp = std::make_shared<HistogramImpl>();
+        hist_.insert({op_type, std::move(hist_temp)});
+      }
+      hist_[op_type]->Add(micros);
+
+      if (micros >= FLAGS_slow_usecs && !FLAGS_stats_interval) {
+        fprintf(stderr, "long op: %" PRIu64 " micros%30s\r", micros, "");
+        fflush(stderr);
+      }
+      last_op_finish_ = now;
+    }
+
+    done_ += num_ops;
+    if (done_ >= next_report_ && FLAGS_progress_reports) {
+      if (!FLAGS_stats_interval) {
+        if (next_report_ < 1000) {
+          next_report_ += 100;
+        } else if (next_report_ < 5000) {
+          next_report_ += 500;
+        } else if (next_report_ < 10000) {
+          next_report_ += 1000;
+        } else if (next_report_ < 50000) {
+          next_report_ += 5000;
+        } else if (next_report_ < 100000) {
+          next_report_ += 10000;
+        } else if (next_report_ < 500000) {
+          next_report_ += 50000;
+        } else {
+          next_report_ += 100000;
+        }
+        fprintf(stderr, "... finished %" PRIu64 " ops%30s\r", done_, "");
+      } else {
+        uint64_t now = clock_->NowMicros();
+        int64_t usecs_since_last = now - last_report_finish_;
+
+        // Determine whether to print status where interval is either
+        // each N operations or each N seconds.
+
+        if (FLAGS_stats_interval_seconds &&
+            usecs_since_last < (FLAGS_stats_interval_seconds * 1000000)) {
+          // Don't check again for this many operations.
+          next_report_ += FLAGS_stats_interval;
+
+        } else {
+          fprintf(stderr,
+                  "%s ... thread %d: (%" PRIu64 ",%" PRIu64
+                  ") ops and "
+                  "(%.1f,%.1f) ops/second in (%.6f,%.6f) seconds\n",
+                  clock_->TimeToString(now / 1000000).c_str(), id_,
+                  done_ - last_report_done_, done_,
+                  (done_ - last_report_done_) / (usecs_since_last / 1000000.0),
+                  done_ / ((now - start_) / 1000000.0),
+                  (now - last_report_finish_) / 1000000.0,
+                  (now - start_) / 1000000.0);
+          print_mem_usage();
+
+          std::string block_cache_usage_str;
+          if (db->GetProperty("rocksdb.block-cache-usage", &block_cache_usage_str)) {
+            fprintf(stderr, "rocksdb.block-cache-usage COUNT : %s\n", block_cache_usage_str.c_str());
+          } else {
+            fprintf(stderr, "Failed to get rocksdb.block-cache-usage\n");
+          }
+
+          std::string block_cache_pinned_usage_str;
+          if (db->GetProperty("rocksdb.block-cache-pinned-usage", &block_cache_pinned_usage_str)) {
+            fprintf(stderr, "rocksdb.block-cache-pinned-usage COUNT : %s\n", block_cache_pinned_usage_str.c_str());
+          } else {
+            fprintf(stderr, "Failed to get rocksdb.block-cache-pinned-usage\n");
+          }
+
+          // --- 获取 TableReader 内存使用量估值 ---
+          std::string estimate_table_readers_mem_str;
+          if (db->GetProperty("rocksdb.estimate-table-readers-mem", &estimate_table_readers_mem_str)) {
+            fprintf(stderr, "rocksdb.estimate-table-readers-mem COUNT : %s\n", estimate_table_readers_mem_str.c_str());
+          } else {
+            fprintf(stderr, "Failed to get rocksdb.estimate-table-readers-mem\n");
+          }
+
+          if (id_ == 0 && FLAGS_stats_per_interval) {
+            std::string stats;
+
+            if (db_with_cfh && db_with_cfh->num_created.load()) {
+              for (size_t i = 0; i < db_with_cfh->num_created.load(); ++i) {
+                if (db->GetProperty(db_with_cfh->cfh[i], "rocksdb.cfstats",
+                                    &stats)) {
+                  fprintf(stderr, "%s\n", stats.c_str());
+                }
+                if (FLAGS_show_table_properties) {
+                  for (int level = 0; level < FLAGS_num_levels; ++level) {
+                    if (db->GetProperty(
+                            db_with_cfh->cfh[i],
+                            "rocksdb.aggregated-table-properties-at-level" +
+                                std::to_string(level),
+                            &stats)) {
+                      if (stats.find("# entries=0") == std::string::npos) {
+                        fprintf(stderr, "Level[%d]: %s\n", level,
+                                stats.c_str());
+                      }
+                    }
+                  }
+                }
+              }
+            } else if (db) {
+              if (db->GetProperty("rocksdb.stats", &stats)) {
+                fprintf(stderr, "%s", stats.c_str());
+              }
+              if (db->GetProperty("rocksdb.num-running-compactions", &stats)) {
+                fprintf(stderr, "num-running-compactions: %s\n", stats.c_str());
+              }
+              if (db->GetProperty("rocksdb.num-running-flushes", &stats)) {
+                fprintf(stderr, "num-running-flushes: %s\n\n", stats.c_str());
+              }
+              if (FLAGS_show_table_properties) {
+                for (int level = 0; level < FLAGS_num_levels; ++level) {
+                  if (db->GetProperty(
+                          "rocksdb.aggregated-table-properties-at-level" +
+                              std::to_string(level),
+                          &stats)) {
+                    if (stats.find("# entries=0") == std::string::npos) {
+                      fprintf(stderr, "Level[%d]: %s\n", level, stats.c_str());
+                    }
+                  }
+                }
+              }
+            }
+          }
+
+          next_report_ += FLAGS_stats_interval;
+          last_report_finish_ = now;
+          last_report_done_ = done_;
+        }
+      }
+      if (id_ == 0 && FLAGS_thread_status_per_interval) {
+        PrintThreadStatus();
+      }
+      fflush(stderr);
+    }
+  }
+
   void AddBytes(int64_t n) { bytes_ += n; }
 
   void Report(const Slice& name) {
@@ -5756,11 +5911,11 @@ class Benchmark {
 
       int op_type = workload_operations[i];
 
-      if (i <= 10) {
-        const char* op_name = (op_type == 0) ? "get" : 
-        (op_type == 1) ? "set" : (op_type == 2) ? "cas" : "unknown";
-        fprintf(stdout, "Operation %zu: %s\n", i, op_name);
-      }
+      // if (i <= 10) {
+      //   const char* op_name = (op_type == 0) ? "get" : 
+      //   (op_type == 1) ? "set" : (op_type == 2) ? "cas" : "unknown";
+      //   fprintf(stdout, "Operation %zu: %s\n", i, op_name);
+      // }
 
       if (op_type == 0){ // GET
         char formatget[20];
@@ -5770,13 +5925,18 @@ class Benchmark {
         std::snprintf(key1, sizeof(key1), formatget, (unsigned long long)k);
         Slice readkey(key1);
         std::string* ts_ptr = nullptr;
+
+        auto t_start = std::chrono::high_resolution_clock::now();
         auto sta1 = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        double duration_us = std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(t_end - t_start).count();
+
         if (sta1.ok()) {
           found++;
         }
         bytesget = (16 + FLAGS_value_size);
         thread->stats.AddBytes(bytesget);
-        thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kRead);
       }else if(op_type == 1){
         char formatadd[20];
         char key2[100];
@@ -5788,9 +5948,14 @@ class Benchmark {
         batch.Put(key2, val);
         batch_bytes += val.size() + k_size + user_timestamp_size_;
         bytesadd += val.size() + k_size + user_timestamp_size_;
+
+        auto t_start = std::chrono::high_resolution_clock::now();
         s = db_.db->Write(write_options_, &batch);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        double duration_us = std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(t_end - t_start).count();
+
         thread->stats.AddBytes(bytesadd);
-        thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kWrite);
         if (!s.ok()) {
           fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
           ErrorExit();
@@ -8522,7 +8687,7 @@ class Benchmark {
         fprintf(stderr, "put error: %s\n", s.ToString().c_str());
         ErrorExit();
       }
-      thread->stats.FinishedOps(nullptr, db, 1);
+      thread->stats.FinishedOps(nullptr, db, 1, -1.0);
     }
     char msg[100];
     snprintf(msg, sizeof(msg), "( updates:%" PRIu64 " found:%" PRIu64 ")",

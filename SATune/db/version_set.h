@@ -245,6 +245,21 @@ class VersionSet {
     return num_live_levels_;
   }
 
+  const uint64_t GetAverageLevelFileSize(int level) const{
+    const Version* v = current_;
+    if (v == nullptr) return 0;
+
+    const std::vector<FileMetaData*>& files = v->files_[level];
+    if (files.empty()) return 0;
+
+    uint64_t total_size = 0;
+    for (auto f : files) {
+      total_size += f->file_size;
+    }
+
+    return static_cast<int>(total_size / files.size()); 
+  }
+
   // Return the number of Table files at the specified level.
   int NumLevelFiles(int level) const;
 

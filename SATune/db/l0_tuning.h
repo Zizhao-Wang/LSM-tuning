@@ -235,6 +235,8 @@ namespace leveldb {
     std::atomic<uint64_t> stop_count{0};
     std::atomic<uint64_t> total_slow_or_stop_time{0};
 
+    std::atomic<uint64_t> flush_stall_time{0};
+
     // New: L0 Overlimit Detection Statistics
     std::atomic<uint64_t> l0_exceed_trigger_count{0};
     std::atomic<uint64_t> l0_exceed_total_files{0};

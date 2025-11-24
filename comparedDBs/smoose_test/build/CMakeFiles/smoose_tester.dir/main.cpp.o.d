@@ -284,4 +284,7 @@ CMakeFiles/smoose_tester.dir/main.cpp.o: \
  /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/include/rocksdb/table.h \
  /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/include/rocksdb/filter_policy.h \
  /usr/include/c++/11/algorithm \
- /usr/include/c++/11/pstl/glue_algorithm_defs.h
+ /usr/include/c++/11/pstl/glue_algorithm_defs.h \
+ /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/include/rocksdb/perf_context.h \
+ /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/include/rocksdb/perf_level.h \
+ /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/include/rocksdb/iostats_context.h

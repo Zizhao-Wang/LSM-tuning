@@ -17,6 +17,9 @@
 #include "rocksdb/table.h"
 #include "rocksdb/table_properties.h" // 新增头文件以提供完整的表定义
 #include "rocksdb/filter_policy.h"
+#include "rocksdb/perf_context.h"
+#include "rocksdb/iostats_context.h"
+
 
 
 DEFINE_string(data_file_path, "", "Path to the CSV data file.");
@@ -36,6 +39,13 @@ DEFINE_string(workload, "fill", "Workload type: 'fill' or 'mixed'");
 DEFINE_double(read_ratio, 0.5, "Read ratio (0.0 to 1.0)");
 DEFINE_double(write_ratio, 0.5, "Write ratio (0.0 to 1.0)");
 DEFINE_bool(verify_reads, false, "Verify read values against expected values");
+
+DEFINE_int32(perf_level, 1, "Performance monitoring level (1-5). 1=disabled, 5=full detail");
+
+DEFINE_int64(block_cache_mb, 128, "Block cache size in MB (e.g., 8, 64, 128)");
+DEFINE_int64(table_cache_size, 1000, "Table cache size (number of open files)");
+
+
 
 void mixedWorkload(rocksdb::DB* db) {
   if (FLAGS_data_file_path.empty()) {
@@ -577,6 +587,25 @@ void printf_mem(rocksdb::DB* db){
   }
 }
 
+void PrintPerfStatsIfEnabled() {
+  if (FLAGS_perf_level < 2) {
+    fprintf(stdout, "[Perf] perf_level=%d → Performance statistics disabled.\n", FLAGS_perf_level);
+    return;
+  }
+
+  // 指针版本
+  const auto* perf_context = rocksdb::get_perf_context();
+  const auto* iostats_context = rocksdb::get_iostats_context();
+
+  fprintf(stdout, "\n=== RocksDB PerfContext (perf_level=%d) ===\n", FLAGS_perf_level);
+  fprintf(stdout, "%s\n", perf_context->ToString().c_str());
+
+  fprintf(stdout, "\n=== RocksDB IOStatsContext ===\n");
+  fprintf(stdout, "%s\n", iostats_context->ToString().c_str());
+  fprintf(stdout, "=========================================\n");
+}
+
+
 int main(int argc, char** argv) {
   // 解析命令行参数
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -586,29 +615,59 @@ int main(int argc, char** argv) {
 
     // --- 根据读写比例动态配置 Smoose 参数 ---
     // 这是基于用户提供的针对不同工作负载的调优值
-  if (FLAGS_workload == "mixed") {
-    if (std::abs(FLAGS_read_ratio - 0.5) < 0.01) {
-      // 平衡读写 (50% 读 / 50% 写)
-      fprintf(stderr, "Applying balanced workload Smoose configuration.\n");
-      options.level_capacities = {7, 7, 7, 8,3};
-      options.run_numbers = {7, 7, 7, 8, 3};
-    } else if (std::abs(FLAGS_read_ratio - 0.9) < 0.01 || std::abs(FLAGS_read_ratio - 1.0) < 0.01) {
-      // 重度读 (90%-100% 读)
-      fprintf(stderr, "Applying read-heavy workload Smoose configuration.\n");
-      options.level_capacities = {27,27,13};
-      options.run_numbers = {2,2,1};
-    } else {
-      // 默认配置为重度写 (例如: 10% 读 / 90% 写)
-      fprintf(stderr, "Applying write-heavy (default) workload Smoose configuration.\n");
-      options.level_capacities = {10, 11, 11, 8};
-      options.run_numbers = {10, 11, 11, 7};
+  // if (FLAGS_workload == "mixed") {
+  //   if (std::abs(FLAGS_read_ratio - 0.5) < 0.01) {
+  //     // 平衡读写 (50% 读 / 50% 写)
+  //     fprintf(stderr, "Applying balanced workload Smoose configuration.\n");
+  //     options.level_capacities = {7, 7, 7, 8,3};
+  //     options.run_numbers = {7, 7, 7, 8, 3};
+  //   } else if (std::abs(FLAGS_read_ratio - 0.9) < 0.01 || std::abs(FLAGS_read_ratio - 1.0) < 0.01) {
+  //     // 重度读 (90%-100% 读)
+  //     fprintf(stderr, "Applying read-heavy workload Smoose configuration.\n");
+  //     options.level_capacities = {27,27,13};
+  //     options.run_numbers = {2,2,1};
+  //   } else {
+  //     // 默认配置为重度写 (例如: 10% 读 / 90% 写)
+  //     fprintf(stderr, "Applying write-heavy (default) workload Smoose configuration.\n");
+  //     options.level_capacities = {10, 11, 11, 8};
+  //     options.run_numbers = {10, 11, 11, 7};
+  //   }
+  // } else {
+  //   // 对于 "fill" 负载，使用重度写配置
+  //   fprintf(stderr, "Applying write-heavy configuration for 'fill' workload.\n");
+  //   options.level_capacities = {10, 11, 11, 8};
+  //   options.run_numbers = {10, 11, 11, 7};
+  // }
+
+  // cluster 35 51 30 1 
+  options.level_capacities = {27,27,13};
+  options.run_numbers = {2,2,1};
+
+  //cluster 40 49 
+  // options.level_capacities = {7,7,7,8,3};
+  // options.run_numbers = {7,7,7,8,3};
+
+
+
+  fprintf(stdout, "=== Cluster Configuration ===\n");
+  fprintf(stdout, "level_capacities: ");
+  for (size_t i = 0; i < options.level_capacities.size(); i++) {
+    fprintf(stdout, "%ld", options.level_capacities[i]);
+    if (i < options.level_capacities.size() - 1) {
+      fprintf(stdout, ", ");
     }
-  } else {
-    // 对于 "fill" 负载，使用重度写配置
-    fprintf(stderr, "Applying write-heavy configuration for 'fill' workload.\n");
-    options.level_capacities = {10, 11, 11, 8};
-    options.run_numbers = {10, 11, 11, 7};
   }
+  fprintf(stdout, "\n");
+
+  fprintf(stdout, "run_numbers: ");
+  for (size_t i = 0; i < options.run_numbers.size(); i++) {
+    fprintf(stdout, "%d", options.run_numbers[i]);
+      if (i < options.run_numbers.size() - 1) {
+      fprintf(stdout, ", ");
+    }
+  }
+  fprintf(stdout, "\n");
+
 
   options.create_if_missing = true;
   options.use_direct_io_for_flush_and_compaction= true;
@@ -620,13 +679,15 @@ int main(int argc, char** argv) {
   // options.access_hint_on_compaction_start = rocksdb::Options::NONE;
   // =================================================
 
+  size_t block_cache_size_bytes = static_cast<size_t>(FLAGS_block_cache_mb) * 1024 * 1024;
   std::shared_ptr<rocksdb::Cache> block_cache = rocksdb::NewLRUCache(
-    128 * 1024 * 1024,  // 512MB 缓存大小
-    8,                   // shard数量，用于减少锁竞争
+    block_cache_size_bytes,  // 128MB 缓存大小
+    -1,                   // shard数量，用于减少锁竞争
     false,              // 不严格限制容量
-    0.5                 // high_pri_pool_ratio，用于索引和filter blocks
+    0.0                 // high_pri_pool_ratio，用于索引和filter blocks
   );
-  options.max_open_files = 1000;
+  options.max_open_files = static_cast<int>(FLAGS_table_cache_size);
+
   
   // options.write_buffer_size = 2097152;
   // options.IncreaseParallelism(); // 使用推荐的并行设置
@@ -647,6 +708,26 @@ int main(int argc, char** argv) {
     return 1;
   }
   std::cout << "Database opened successfully!" << std::endl;
+
+  // --- Perf Level ---
+  if (FLAGS_perf_level <= 1) {
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kDisable);
+    fprintf(stdout, "[Perf] perf_level=%d (disabled)\n", FLAGS_perf_level);
+  } else if (FLAGS_perf_level <= 3) {
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableCount);
+    fprintf(stdout, "[Perf] perf_level=%d (basic counters)\n", FLAGS_perf_level);
+  } else if (FLAGS_perf_level == 4) {
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeExceptForMutex);
+    fprintf(stdout, "[Perf] perf_level=4 (timing without mutex)\n");
+  } else {
+    rocksdb::SetPerfLevel(rocksdb::PerfLevel::kEnableTimeAndCPUTimeExceptForMutex);
+    fprintf(stdout, "[Perf] perf_level=5 (full detail)\n");
+  }
+
+  // 重置本线程的统计（强烈推荐，避免历史噪音）
+  rocksdb::get_perf_context()->Reset();
+  rocksdb::get_iostats_context()->Reset();
+
 
   // --- 调用写入函数进行测试 ---
  // 验证读写比例
@@ -679,7 +760,10 @@ int main(int argc, char** argv) {
   }
 
   // 在关闭数据库前打印内存使用情况
+  PrintPerfStatsIfEnabled();
+
   printMemoryUsage();
+
   printf_mem(db);
 
   // 关闭并删除数据库对象

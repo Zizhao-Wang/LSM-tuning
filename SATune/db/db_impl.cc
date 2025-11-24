@@ -2299,7 +2299,7 @@ Status DBImpl::MakeRoomForWrite(bool force) {
         flush_work_finished_signal_.Wait();
         auto wait_end = std::chrono::high_resolution_clock::now();
         auto wait_duration = std::chrono::duration_cast<std::chrono::microseconds>(wait_end - wait_start).count();
-        L0_unknown_stall_stats_.total_slow_or_stop_time.fetch_add(wait_duration, std::memory_order_relaxed);
+        L0_unknown_stall_stats_.flush_stall_time.fetch_add(wait_duration, std::memory_order_relaxed);
         // wait_queue_micros_.fetch_add(wait_duration, std::memory_order_relaxed);
         // fprintf(stderr,"Waiting finished! imms_queue_size=%ld\n", imms_queue_size_.load(std::memory_order_relaxed));
       }

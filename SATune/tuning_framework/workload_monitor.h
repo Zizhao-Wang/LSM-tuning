@@ -437,7 +437,7 @@ class PerformanceMonitor {
 
   void UpdateLevelCreation(int level) {
     if (level >= 0 && level < 7 && !level_first_creation[level]) {
-      level_first_creation[level] = true;
+      level_first_creation[level] = false;
     }
   }
 
@@ -491,7 +491,7 @@ private:
   // sometimes, we need rollback the paramters in the "CompactionOptions" struct
   SimpleTuningRecord tuning_records_;
 
-  bool level_first_creation[7] = {true, false, false, false, false, false, false};
+  bool level_first_creation[7] = {false, true, true, true, true, true, true};
 
 };
 
