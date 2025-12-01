@@ -42,6 +42,30 @@ cluster_value_size_map[51]=1000
 cluster_value_size_map[40]=1000
 cluster_value_size_map[49]=1000
 
+declare -A table_cache_size
+
+cluster_table_size_map[35]=20
+cluster_table_size_map[40]=100
+cluster_table_size_map[49]=8
+cluster_table_size_map[51]=3
+cluster_table_size_map[30]=8
+cluster_table_size_map[1]=0
+cluster_table_size_map[48]=300
+cluster_table_size_map[12]=200
+cluster_table_size_map[13]=500
+
+declare -A cluster_block_cache_size_map
+
+cluster_block_cache_size_map[35]=8
+cluster_block_cache_size_map[40]=8
+cluster_block_cache_size_map[49]=8
+cluster_block_cache_size_map[51]=3
+cluster_block_cache_size_map[30]=8
+cluster_block_cache_size_map[1]=3
+cluster_block_cache_size_map[12]=8
+cluster_block_cache_size_map[13]=8
+cluster_block_cache_size_map[48]=8
+
 convert_to_billion_format() {
     local num=$1
     local integer_part=$((num / billion))
@@ -60,8 +84,8 @@ convert_to_billion_format() {
 
 READ_RATIOS=(0.0)
 
-for i in 35  ; do # 40 49 35 51 30 1
-    dir1="10B_Smoose_SATASSD_MultiTwitterClusters_Benchmarking_Performance2"
+for i in 40 49 13 ; do # 40 49 35 51 30 1
+    dir1="10B_Smoose_SATASSD_MultiTwitterClusters_Benchmarking_Performance_dbtest2"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -75,8 +99,8 @@ for i in 35  ; do # 40 49 35 51 30 1
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
                 for read_ratio in "${READ_RATIOS[@]}"; do
-                for blk_cache_size in 8; do
-                for table_cache_size in  0 20 50 100 500; do
+                for blk_cache_size in ${cluster_block_cache_size_map[$cluster_a]} ; do
+                for table_cache_size in 0 ${cluster_table_size_map[$cluster_a]}; do
                 for perf_tier in 1 ; do
                     write_ratio=$(echo "1.0 - $read_ratio" | bc)
                     

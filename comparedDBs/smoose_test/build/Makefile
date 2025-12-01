@@ -153,6 +153,30 @@ main.cpp.s:
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/smoose_tester.dir/build.make CMakeFiles/smoose_tester.dir/main.cpp.s
 .PHONY : main.cpp.s
 
+mixgraph_workload.o: mixgraph_workload.cc.o
+.PHONY : mixgraph_workload.o
+
+# target to build an object file
+mixgraph_workload.cc.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/smoose_tester.dir/build.make CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o
+.PHONY : mixgraph_workload.cc.o
+
+mixgraph_workload.i: mixgraph_workload.cc.i
+.PHONY : mixgraph_workload.i
+
+# target to preprocess a source file
+mixgraph_workload.cc.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/smoose_tester.dir/build.make CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.i
+.PHONY : mixgraph_workload.cc.i
+
+mixgraph_workload.s: mixgraph_workload.cc.s
+.PHONY : mixgraph_workload.s
+
+# target to generate assembly for a file
+mixgraph_workload.cc.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/smoose_tester.dir/build.make CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.s
+.PHONY : mixgraph_workload.cc.s
+
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -165,6 +189,9 @@ help:
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
+	@echo "... mixgraph_workload.o"
+	@echo "... mixgraph_workload.i"
+	@echo "... mixgraph_workload.s"
 .PHONY : help
 
 

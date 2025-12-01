@@ -15,8 +15,8 @@ slowdown_map[4]=16
 slowdown_map[8]=16
 slowdown_map[12]=20
 slowdown_map[16]=20
-slowdown_map[32]=40
-slowdown_map[64]=80
+slowdown_map[32]=60
+slowdown_map[64]=100
 slowdown_map[400000]=800000
 
 stop_map[1]=12
@@ -25,7 +25,7 @@ stop_map[4]=20
 stop_map[8]=32
 stop_map[12]=32
 stop_map[16]=32
-stop_map[32]=74
+stop_map[32]=80
 stop_map[64]=144
 stop_map[400000]=800000
 
@@ -98,22 +98,22 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 12 13; do
-    dir1="RocksDB_SATASSD_MultiTwitterClusters_Benchmarking_Performance_dbtest2"
+for i in 13; do
+    dir1="RocksDB_SATASSD_TwitterClusters13_Benchmarking_Performance_dbtest2"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
             for cluster_a in "$i"; do  # 
-                for ct0 in 4 ; do  # 
-                for mb in 12000 ; do
+                for ct0 in 16 32 64 ; do  # 
+                for mb in  1100 2200 4300 ; do
                 for buffer_size in 67108864; do
                 for workload_kvs in 100000000 ; do 
                     num_format2=$(convert_to_billion_format "$workload_kvs")
                     stats_interva=$((workload_kvs / 10))
                     echo "原始值: $workload_kvs, 转换后: $num_format2"
                     for blk_cache_size in ${cluster_block_cache_size_map[$cluster_a]} ; do
-                    for table_cache_size in 0 ${cluster_table_size_map[$cluster_a]}; do
+                    for table_cache_size in ${cluster_table_size_map[$cluster_a]}; do
 
                         # buffer_size=67108864
                         # buffer_size=2097152
@@ -125,7 +125,8 @@ for i in 12 13; do
                         key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
                         log_file="RocksDB_${num_format2}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
-                        data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                        # data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                        data_file="/mnt/workloads/second_cluster${cluster_a}.sort" # 构建数据文件路径
                         memory_log_file="$(pwd)/RocksDB_Memory_${num_format2}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_L1${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                         # 如果日志文件存在，则跳过当前迭代
@@ -136,7 +137,15 @@ for i in 12 13; do
 
                         # 创建相应的目录
                         db_dir="/mnt/db_test2/rocks10B/PreLoad_Cluster${cluster_a}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                        if [ ! -d "$db_dir" ]; then
+                            mkdir -p "$db_dir"
+                        fi
 
+                        # 检查目录是否为空，如果不为空则删除所有内容
+                        if [ "$(ls -A $db_dir)" ]; then
+                            rm -rf "${db_dir:?}/"*
+                        fi
+                        
                         # 获取对应ct0的slowdown和stop值
                         slowdown_value=${slowdown_map[$ct0]}
                         stop_value=${stop_map[$ct0]}

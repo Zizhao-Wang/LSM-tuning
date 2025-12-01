@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 
 # 生成我们的可执行文件，源文件是 main.cpp
-add_executable(smoose_tester main.cpp)
+add_executable(smoose_tester main.cpp mixgraph_workload.cc)
 
 
 # 告诉 CMake 去哪里找 smoose 的头文件 (.h 文件)

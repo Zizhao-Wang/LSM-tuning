@@ -98,7 +98,7 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 35 40 49 51 30 1 12 13 ; do
+for i in 35 40 49 51 30 1 12 13 48 ; do
     dir1="AutumnDB_SATASSD_MultiTwitterClusters_Benchmarking_Performance_mntdisk"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1

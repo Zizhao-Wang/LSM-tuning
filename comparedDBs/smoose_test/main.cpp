@@ -19,7 +19,7 @@
 #include "rocksdb/filter_policy.h"
 #include "rocksdb/perf_context.h"
 #include "rocksdb/iostats_context.h"
-
+#include "mixgraph_workload.h"
 
 
 DEFINE_string(data_file_path, "", "Path to the CSV data file.");
@@ -45,7 +45,471 @@ DEFINE_int32(perf_level, 1, "Performance monitoring level (1-5). 1=disabled, 5=f
 DEFINE_int64(block_cache_mb, 128, "Block cache size in MB (e.g., 8, 64, 128)");
 DEFINE_int64(table_cache_size, 1000, "Table cache size (number of open files)");
 
+// for mixgraph
+DEFINE_int64(mix_max_scan_len, 10000, "The max scan length of Iterator");
+DEFINE_int64(keyrange_num, 1,
+             "The number of key ranges that are in the same prefix "
+             "group, each prefix range will have its key access distribution");
+DEFINE_double(mix_get_ratio, 1.0,
+              "The ratio of Get queries of mix_graph workload");
+DEFINE_double(mix_put_ratio, 0.0,
+              "The ratio of Put queries of mix_graph workload");
+DEFINE_double(mix_seek_ratio, 0.0,
+              "The ratio of Seek queries of mix_graph workload");
+DEFINE_int32(value_size_max, 102400, "Max size of random value");
+DEFINE_int32(value_size_min, 100, "Min size of random value");
 
+DEFINE_double(compression_ratio, 0.5,
+              "Arrange to generate values that shrink to this fraction of "
+              "their original size after compression");
+DEFINE_int64(mix_max_value_size, 1024, "The max value size of this workload");
+DEFINE_int32(key_size, 16, "size of each key");
+DEFINE_bool(sine_mix_rate, false,
+            "Enable the sine QPS control on the mix workload");
+DEFINE_double(keyrange_dist_a, 0.0,
+              "The parameter 'a' of prefix average access distribution "
+              "f(x)=a*exp(b*x)+c*exp(d*x)");
+DEFINE_double(keyrange_dist_b, 0.0,
+              "The parameter 'b' of prefix average access distribution "
+              "f(x)=a*exp(b*x)+c*exp(d*x)");
+DEFINE_double(keyrange_dist_c, 0.0,
+              "The parameter 'c' of prefix average access distribution"
+              "f(x)=a*exp(b*x)+c*exp(d*x)");
+DEFINE_double(keyrange_dist_d, 0.0,
+              "The parameter 'd' of prefix average access distribution"
+              "f(x)=a*exp(b*x)+c*exp(d*x)");
+DEFINE_double(key_dist_a, 0.0,
+              "The parameter 'a' of key access distribution model f(x)=a*x^b");
+DEFINE_double(key_dist_b, 0.0,
+              "The parameter 'b' of key access distribution model f(x)=a*x^b");
+DEFINE_int32(duration, 0,
+             "Time in seconds for the random-ops tests to run."
+             " When 0 then num & reads determine the test duration");
+DEFINE_int64(reads, -1,
+             "Number of read operations to do.  "
+             "If negative, do FLAGS_num reads.");
+DEFINE_int32(ops_between_duration_checks, 1000,
+             "Check duration limit every x ops");
+DEFINE_int32(prefix_size, 0,
+             "control the prefix size for HashSkipList and plain table");
+
+
+  enum DistributionType : unsigned char { kFixed = 0, kUniform, kNormal };
+  static enum DistributionType FLAGS_value_size_distribution_type_e = kFixed;
+  static unsigned int value_size = 128;
+  static ROCKSDB_NAMESPACE::Env* FLAGS_env = ROCKSDB_NAMESPACE::Env::Default();
+
+
+  class Random64 {
+  private:
+    std::mt19937_64 generator_;
+
+  public:
+    explicit Random64(uint64_t s) : generator_(s) {}
+
+    // Generates the next random number
+    uint64_t Next() { return generator_(); }
+
+    // Returns a uniformly distributed value in the range [0..n-1]
+    // REQUIRES: n > 0
+    uint64_t Uniform(uint64_t n) {
+      return std::uniform_int_distribution<uint64_t>(0, n - 1)(generator_);
+    }
+
+    // Randomly returns true ~"1/n" of the time, and false otherwise.
+    // REQUIRES: n > 0
+    bool OneIn(uint64_t n) { return Uniform(n) == 0; }
+
+    // Skewed: pick "base" uniformly from range [0,max_log] and then
+    // return "base" random bits.  The effect is to pick a number in the
+    // range [0,2^max_log-1] with exponential bias towards smaller numbers.
+    uint64_t Skewed(int max_log) {
+      return Uniform(uint64_t(1) << Uniform(max_log + 1));
+    }
+  };
+
+
+  struct KeyrangeUnit {
+    int64_t keyrange_start;
+    int64_t keyrange_access;
+    int64_t keyrange_keys;
+  };
+
+  class GenerateTwoTermExpKeys {
+   public:
+    // Avoid uninitialized warning-as-error in some compilers
+    int64_t keyrange_rand_max_ = 0;
+    int64_t keyrange_size_ = 0;
+    int64_t keyrange_num_ = 0;
+    std::vector<KeyrangeUnit> keyrange_set_;
+
+    // Initiate the KeyrangeUnit vector and calculate the size of each
+    // KeyrangeUnit.
+    rocksdb::Status InitiateExpDistribution(int64_t total_keys, double prefix_a,
+                                   double prefix_b, double prefix_c,
+                                   double prefix_d) {
+      int64_t amplify = 0;
+      int64_t keyrange_start = 0;
+      if (FLAGS_keyrange_num <= 0) {
+        keyrange_num_ = 1;
+      } else {
+        keyrange_num_ = FLAGS_keyrange_num;
+      }
+      keyrange_size_ = total_keys / keyrange_num_;
+
+      // Calculate the key-range shares size based on the input parameters
+      for (int64_t pfx = keyrange_num_; pfx >= 1; pfx--) {
+        // Step 1. Calculate the probability that this key range will be
+        // accessed in a query. It is based on the two-term expoential
+        // distribution
+        double keyrange_p = prefix_a * std::exp(prefix_b * pfx) +
+                            prefix_c * std::exp(prefix_d * pfx);
+        if (keyrange_p < std::pow(10.0, -16.0)) {
+          keyrange_p = 0.0;
+        }
+        // Step 2. Calculate the amplify
+        // In order to allocate a query to a key-range based on the random
+        // number generated for this query, we need to extend the probability
+        // of each key range from [0,1] to [0, amplify]. Amplify is calculated
+        // by 1/(smallest key-range probability). In this way, we ensure that
+        // all key-ranges are assigned with an Integer that  >=0
+        if (amplify == 0 && keyrange_p > 0) {
+          amplify = static_cast<int64_t>(std::floor(1 / keyrange_p)) + 1;
+        }
+
+        // Step 3. For each key-range, we calculate its position in the
+        // [0, amplify] range, including the start, the size (keyrange_access)
+        KeyrangeUnit p_unit;
+        p_unit.keyrange_start = keyrange_start;
+        if (0.0 >= keyrange_p) {
+          p_unit.keyrange_access = 0;
+        } else {
+          p_unit.keyrange_access =
+              static_cast<int64_t>(std::floor(amplify * keyrange_p));
+        }
+        p_unit.keyrange_keys = keyrange_size_;
+        keyrange_set_.push_back(p_unit);
+        keyrange_start += p_unit.keyrange_access;
+      }
+      keyrange_rand_max_ = keyrange_start;
+
+      // Step 4. Shuffle the key-ranges randomly
+      // Since the access probability is calculated from small to large,
+      // If we do not re-allocate them, hot key-ranges are always at the end
+      // and cold key-ranges are at the begin of the key space. Therefore, the
+      // key-ranges are shuffled and the rand seed is only decide by the
+      // key-range hotness distribution. With the same distribution parameters
+      // the shuffle results are the same.
+      Random64 rand_loca(keyrange_rand_max_);
+      for (int64_t i = 0; i < FLAGS_keyrange_num; i++) {
+        int64_t pos = rand_loca.Next() % FLAGS_keyrange_num;
+        assert(i >= 0 && i < static_cast<int64_t>(keyrange_set_.size()) &&
+               pos >= 0 && pos < static_cast<int64_t>(keyrange_set_.size()));
+        std::swap(keyrange_set_[i], keyrange_set_[pos]);
+      }
+
+      // Step 5. Recalculate the prefix start postion after shuffling
+      int64_t offset = 0;
+      for (auto& p_unit : keyrange_set_) {
+        p_unit.keyrange_start = offset;
+        offset += p_unit.keyrange_access;
+      }
+
+      return rocksdb::Status::OK();
+    }
+
+    // Generate the Key ID according to the input ini_rand and key distribution
+    int64_t DistGetKeyID(int64_t ini_rand, double key_dist_a,
+                         double key_dist_b) {
+      int64_t keyrange_rand = ini_rand % keyrange_rand_max_;
+
+      // Calculate and select one key-range that contains the new key
+      int64_t start = 0, end = static_cast<int64_t>(keyrange_set_.size());
+      while (start + 1 < end) {
+        int64_t mid = start + (end - start) / 2;
+        assert(mid >= 0 && mid < static_cast<int64_t>(keyrange_set_.size()));
+        if (keyrange_rand < keyrange_set_[mid].keyrange_start) {
+          end = mid;
+        } else {
+          start = mid;
+        }
+      }
+      int64_t keyrange_id = start;
+
+      // Select one key in the key-range and compose the keyID
+      int64_t key_offset = 0, key_seed;
+      if (key_dist_a == 0.0 || key_dist_b == 0.0) {
+        key_offset = ini_rand % keyrange_size_;
+      } else {
+        double u =
+            static_cast<double>(ini_rand % keyrange_size_) / keyrange_size_;
+        key_seed = static_cast<int64_t>(
+            ceil(std::pow((u / key_dist_a), (1 / key_dist_b))));
+        Random64 rand_key(key_seed);
+        key_offset = rand_key.Next() % keyrange_size_;
+      }
+      return keyrange_size_ * keyrange_id + key_offset;
+    }
+  };
+
+  class QueryDecider {
+   public:
+    std::vector<int> type_;
+    std::vector<double> ratio_;
+    int range_;
+
+    QueryDecider() = default;
+    ~QueryDecider() = default;
+
+    rocksdb::Status Initiate(std::vector<double> ratio_input) {
+      int range_max = 1000;
+      double sum = 0.0;
+      for (auto& ratio : ratio_input) {
+        sum += ratio;
+      }
+      range_ = 0;
+      for (auto& ratio : ratio_input) {
+        range_ += static_cast<int>(ceil(range_max * (ratio / sum)));
+        type_.push_back(range_);
+        ratio_.push_back(ratio / sum);
+      }
+      return rocksdb::Status::OK();
+    }
+
+    int GetType(int64_t rand_num) {
+      if (rand_num < 0) {
+        rand_num = rand_num * (-1);
+      }
+      assert(range_ != 0);
+      int pos = static_cast<int>(rand_num % range_);
+      for (int i = 0; i < static_cast<int>(type_.size()); i++) {
+        if (pos < type_[i]) {
+          return i;
+        }
+      }
+      return 0;
+    }
+  };
+
+  class BaseDistribution {
+  public:
+    BaseDistribution(unsigned int _min, unsigned int _max)
+        : min_value_size_(_min), max_value_size_(_max) {}
+    virtual ~BaseDistribution() = default;
+
+    unsigned int Generate() {
+      auto val = Get();
+      if (NeedTruncate()) {
+        val = std::max(min_value_size_, val);
+        val = std::min(max_value_size_, val);
+      }
+      return val;
+    }
+
+  private:
+    virtual unsigned int Get() = 0;
+    virtual bool NeedTruncate() { return true; }
+    unsigned int min_value_size_;
+    unsigned int max_value_size_;
+  };
+
+  class UniformDistribution : public BaseDistribution,
+                              public std::uniform_int_distribution<unsigned int> {
+  public:
+    UniformDistribution(unsigned int _min, unsigned int _max)
+        : BaseDistribution(_min, _max),
+          std::uniform_int_distribution<unsigned int>(_min, _max),
+          gen_(rd_()) {}
+
+  private:
+    unsigned int Get() override { return (*this)(gen_); }
+    bool NeedTruncate() override { return false; }
+    std::random_device rd_;
+    std::mt19937 gen_;
+  };
+
+  class NormalDistribution : public BaseDistribution,
+                            public std::normal_distribution<double> {
+  public:
+    NormalDistribution(unsigned int _min, unsigned int _max)
+        : BaseDistribution(_min, _max),
+          // 99.7% values within the range [min, max].
+          std::normal_distribution<double>(
+              (double)(_min + _max) / 2.0 /*mean*/,
+              (double)(_max - _min) / 6.0 /*stddev*/),
+          gen_(rd_()) {}
+
+  private:
+    unsigned int Get() override {
+      return static_cast<unsigned int>((*this)(gen_));
+    }
+    std::random_device rd_;
+    std::mt19937 gen_;
+  };
+
+  class FixedDistribution : public BaseDistribution {
+  public:
+    FixedDistribution(unsigned int size)
+        : BaseDistribution(size, size), size_(size) {}
+
+  private:
+    unsigned int Get() override { return size_; }
+    bool NeedTruncate() override { return false; }
+    unsigned int size_;
+  };
+
+  // A very simple random number generator.  Not especially good at
+  // generating truly random bits, but good enough for our needs in this
+  // package.
+  class Random {
+  private:
+    enum : uint32_t {
+      M = 2147483647L  // 2^31-1
+    };
+    enum : uint64_t {
+      A = 16807  // bits 14, 8, 7, 5, 2, 1, 0
+    };
+
+    uint32_t seed_;
+
+    static uint32_t GoodSeed(uint32_t s) { return (s & M) != 0 ? (s & M) : 1; }
+
+  public:
+    // This is the largest value that can be returned from Next()
+    enum : uint32_t { kMaxNext = M };
+
+    explicit Random(uint32_t s) : seed_(GoodSeed(s)) {}
+
+    void Reset(uint32_t s) { seed_ = GoodSeed(s); }
+
+    uint32_t Next() {
+      // We are computing
+      //       seed_ = (seed_ * A) % M,    where M = 2^31-1
+      //
+      // seed_ must not be zero or M, or else all subsequent computed values
+      // will be zero or M respectively.  For all other values, seed_ will end
+      // up cycling through every number in [1,M-1]
+      uint64_t product = seed_ * A;
+
+      // Compute (product % M) using the fact that ((x << 31) % M) == x.
+      seed_ = static_cast<uint32_t>((product >> 31) + (product & M));
+      // The first reduction may overflow by 1 bit, so we may need to
+      // repeat.  mod == M is not possible; using > allows the faster
+      // sign-bit-based test.
+      if (seed_ > M) {
+        seed_ -= M;
+      }
+      return seed_;
+    }
+
+    uint64_t Next64() { return (uint64_t{Next()} << 32) | Next(); }
+
+    // Returns a uniformly distributed value in the range [0..n-1]
+    // REQUIRES: n > 0
+    uint32_t Uniform(int n) { return Next() % n; }
+
+    // Randomly returns true ~"1/n" of the time, and false otherwise.
+    // REQUIRES: n > 0
+    bool OneIn(int n) { return Uniform(n) == 0; }
+
+    // "Optional" one-in-n, where 0 or negative always returns false
+    // (may or may not consume a random value)
+    bool OneInOpt(int n) { return n > 0 && OneIn(n); }
+
+    // Returns random bool that is true for the given percentage of
+    // calls on average. Zero or less is always false and 100 or more
+    // is always true (may or may not consume a random value)
+    bool PercentTrue(int percentage) {
+      return static_cast<int>(Uniform(100)) < percentage;
+    }
+
+    // Skewed: pick "base" uniformly from range [0,max_log] and then
+    // return "base" random bits.  The effect is to pick a number in the
+    // range [0,2^max_log-1] with exponential bias towards smaller numbers.
+    uint32_t Skewed(int max_log) { return Uniform(1 << Uniform(max_log + 1)); }
+
+    // Returns a random string of length "len"
+    std::string RandomString(int len);
+
+    // Generates a random string of len bytes using human-readable characters
+    std::string HumanReadableString(int len);
+
+    // Generates a random binary data
+    std::string RandomBinaryString(int len);
+
+    // Returns a Random instance for use by the current thread without
+    // additional locking
+    static Random* GetTLSInstance();
+  };
+
+  class RandomGenerator {
+  private:
+    std::string data_;
+    unsigned int pos_;
+    std::unique_ptr<BaseDistribution> dist_;
+
+  public:
+    RandomGenerator() {
+      auto max_value_size = FLAGS_value_size_max;
+      switch (FLAGS_value_size_distribution_type_e) {
+        case kUniform:
+          dist_.reset(new UniformDistribution(FLAGS_value_size_min,
+                                              FLAGS_value_size_max));
+          break;
+        case kNormal:
+          dist_.reset(
+              new NormalDistribution(FLAGS_value_size_min, FLAGS_value_size_max));
+          break;
+        case kFixed:
+        default:
+          dist_.reset(new FixedDistribution(value_size));
+          max_value_size = value_size;
+      }
+      // We use a limited amount of data over and over again and ensure
+      // that it is larger than the compression window (32KB), and also
+      // large enough to serve all typical value sizes we want to write.
+      Random rnd(301);
+      std::string piece;
+      while (data_.size() < (unsigned)std::max(1048576, max_value_size)) {
+        // Add a short fragment that is as compressible as specified
+        // by FLAGS_compression_ratio.
+        CompressibleString(&rnd, FLAGS_compression_ratio, 100, &piece);
+        data_.append(piece);
+      }
+      pos_ = 0;
+    }
+
+    rocksdb::Slice CompressibleString(Random* rnd, double compressed_fraction, int len,
+                         std::string* dst) {
+      int raw = static_cast<int>(len * compressed_fraction);
+      if (raw < 1) {
+        raw = 1;
+      }
+      std::string raw_data = rnd->RandomBinaryString(raw);
+
+      // Duplicate the random data until we have filled "len" bytes
+      dst->clear();
+      while (dst->size() < (unsigned int)len) {
+        dst->append(raw_data);
+      }
+      dst->resize(len);
+      return rocksdb::Slice(*dst);
+    }
+
+    rocksdb::Slice Generate(unsigned int len) {
+      assert(len <= data_.size());
+      if (pos_ + len > data_.size()) {
+        pos_ = 0;
+      }
+      pos_ += len;
+      return rocksdb::Slice(data_.data() + pos_ - len, len);
+    }
+
+    rocksdb::Slice Generate() {
+      auto len = dist_->Generate();
+      return Generate(len);
+    }
+  };
 
 void mixedWorkload(rocksdb::DB* db) {
   if (FLAGS_data_file_path.empty()) {
@@ -542,6 +1006,16 @@ void fillcluster(rocksdb::DB* db) {
   csv_file.close();
 }
 
+
+rocksdb::Slice AllocateKey(std::unique_ptr<const char[]>* key_guard) {
+  char* data = new char[FLAGS_key_size];
+  const char* const_data = data;
+  key_guard->reset(const_data);
+  return rocksdb::Slice(key_guard->get(), FLAGS_key_size);
+}
+
+
+
 // 新增函数：打印当前进程的内存使用情况 (适用于 Linux)
 void printMemoryUsage() {
   std::ifstream status_file("/proc/self/status");
@@ -640,12 +1114,12 @@ int main(int argc, char** argv) {
   // }
 
   // cluster 35 51 30 1 
-  options.level_capacities = {27,27,13};
-  options.run_numbers = {2,2,1};
+  // options.level_capacities = {27,27,13};
+  // options.run_numbers = {2,2,1};
 
-  //cluster 40 49 
-  // options.level_capacities = {7,7,7,8,3};
-  // options.run_numbers = {7,7,7,8,3};
+  //cluster 40 49 13
+  options.level_capacities = {7,7,7,8,3};
+  options.run_numbers = {7,7,7,8,3};
 
 
 

@@ -75,22 +75,22 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 40 ; do
+for i in 49 51; do
     dir1="RocksDB_SATASSD_MultiTwitterClusters_Benchmarking_Performance_stats100_slow"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
             for cluster_a in "$i"; do  # 
-                for ct0 in 1 ; do  # 
-                for mb in 12500 ; do
+                for ct0 in 2; do  # 
+                for mb in 2000; do
                 for buffer_size in 67108864; do
                 for workload_kvs in 100000000 ; do 
                     num_format2=$(convert_to_billion_format "$workload_kvs")
                     stats_interva=$((workload_kvs / 10))
                     echo "原始值: $workload_kvs, 转换后: $num_format2"
-                    for blk_cache_size in 8; do
-                    for table_cache_size in 100; do
+                    for blk_cache_size in 0 ; do
+                    for table_cache_size in 0 ; do
 
                         # buffer_size=67108864
                         # buffer_size=2097152
@@ -102,7 +102,8 @@ for i in 40 ; do
                         key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
                         log_file="RocksDB_${num_format2}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
-                        data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                        # data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                        data_file="/mnt/workloads/second_cluster${cluster_a}.sort" # 构建数据文件路径
                         memory_log_file="$(pwd)/RocksDB_Memory_${num_format2}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_L1${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                         # 如果日志文件存在，则跳过当前迭代
@@ -113,7 +114,15 @@ for i in 40 ; do
 
                         # 创建相应的目录
                         db_dir="/mnt/pmem0/rocks10B/PreLoad_Cluster${cluster_a}_mem${buffer_size_mb}MB_CT${ct0}_L1base${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}"
+                        if [ ! -d "$db_dir" ]; then
+                            mkdir -p "$db_dir"
+                        fi
 
+                        # 检查目录是否为空，如果不为空则删除所有内容
+                        if [ "$(ls -A $db_dir)" ]; then
+                            rm -rf "${db_dir:?}/"*
+                        fi
+                        
                         # 获取对应ct0的slowdown和stop值
                         slowdown_value=${slowdown_map[$ct0]}
                         stop_value=${stop_map[$ct0]}

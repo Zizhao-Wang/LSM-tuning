@@ -1,9 +1,9 @@
-# Check if the MooseLSM/release directory exists
-if [ -d "../MooseLSM/release" ]; then
+# Check if the MooseLSM/build directory exists
+if [ -d "../MooseLSM/build" ]; then
     # If it exists, remove the directory
-    rm -rf ../MooseLSM/release
+    rm -rf ../MooseLSM/build
 fi
-# Create the MooseLSM/release directory
-mkdir ../MooseLSM/release
-# Change directory to MooseLSM/release, configure the build for release, make the build with 32 jobs, and then return to the original directory
-cd ../MooseLSM/release && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j30 && cd ../../
+# Create the MooseLSM/build directory
+mkdir ../MooseLSM/build
+# Change directory to MooseLSM/build, configure the build for build, make the build with 32 jobs, and then return to the original directory
+cd ../MooseLSM/build && cmake -DCMAKE_BUILD_TYPE=Release .. && make -j30 && cd ../../
