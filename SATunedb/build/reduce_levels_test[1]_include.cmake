@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/reduce_levels_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/reduce_levels_test[1]_tests.cmake")
+else()
+  add_test(reduce_levels_test_NOT_BUILT reduce_levels_test_NOT_BUILT)
+endif()

@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/crc32c_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/crc32c_test[1]_tests.cmake")
+else()
+  add_test(crc32c_test_NOT_BUILT crc32c_test_NOT_BUILT)
+endif()

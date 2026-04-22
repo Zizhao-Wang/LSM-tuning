@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/db_iterator_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/db_iterator_test[1]_tests.cmake")
+else()
+  add_test(db_iterator_test_NOT_BUILT db_iterator_test_NOT_BUILT)
+endif()

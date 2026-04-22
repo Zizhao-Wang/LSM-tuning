@@ -73,15 +73,15 @@ CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o: CMakeFiles/trace_analyz
 CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o: ../tools/trace_analyzer.cc
 CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o: CMakeFiles/trace_analyzer.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o -MF CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o.d -o CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/trace_analyzer.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o -MF CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o.d -o CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/trace_analyzer.cc
 
 CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/trace_analyzer.cc > CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/trace_analyzer.cc > CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.i
 
 CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/trace_analyzer.cc -o CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/trace_analyzer.cc -o CMakeFiles/trace_analyzer.dir/tools/trace_analyzer.cc.s
 
 # Object files for target trace_analyzer
 trace_analyzer_OBJECTS = \

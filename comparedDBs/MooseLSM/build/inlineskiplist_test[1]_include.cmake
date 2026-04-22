@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/inlineskiplist_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/inlineskiplist_test[1]_tests.cmake")
+else()
+  add_test(inlineskiplist_test_NOT_BUILT inlineskiplist_test_NOT_BUILT)
+endif()

@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/db_sst_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/db_sst_test[1]_tests.cmake")
+else()
+  add_test(db_sst_test_NOT_BUILT db_sst_test_NOT_BUILT)
+endif()

@@ -75,7 +75,7 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 49; do
+for i in 48; do
     dir1="RocksDB_SATASSD_MultiTwitterClusters_Benchmarking_Performance_db_test"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
@@ -121,7 +121,7 @@ for i in 49; do
                         if [ "$(ls -A $db_dir)" ]; then
                             rm -rf "${db_dir:?}/"*
                         fi
-                        
+
                         # 获取对应ct0的slowdown和stop值
                         slowdown_value=${slowdown_map[$ct0]}
                         stop_value=${stop_map[$ct0]}

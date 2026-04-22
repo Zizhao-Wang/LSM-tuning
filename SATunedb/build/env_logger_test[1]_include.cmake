@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/env_logger_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/env_logger_test[1]_tests.cmake")
+else()
+  add_test(env_logger_test_NOT_BUILT env_logger_test_NOT_BUILT)
+endif()

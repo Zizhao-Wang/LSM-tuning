@@ -73,15 +73,15 @@ CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache
 CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o: ../tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc
 CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o: CMakeFiles/block_cache_trace_analyzer.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o -MF CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o.d -o CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o -MF CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o.d -o CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc
 
 CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc > CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc > CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.i
 
 CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc -o CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc -o CMakeFiles/block_cache_trace_analyzer.dir/tools/block_cache_analyzer/block_cache_trace_analyzer_tool.cc.s
 
 # Object files for target block_cache_trace_analyzer
 block_cache_trace_analyzer_OBJECTS = \

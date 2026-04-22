@@ -111,7 +111,8 @@ for i in 40 49 13 ; do # 40 49 35 51 30 1
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
                     log_file="Smoose_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_read_${read_ratio}_write_${write_ratio}Table${table_cache_size}BlockCache${blk_cache_size}Perf${perf_tier}.log"
-                    data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                    # data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                    data_file="/mnt/workloads/second_cluster${cluster_a}.sort" # 构建数据文件路径
                     memory_log_file="$(pwd)/Smoose_PreLoadMemory_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代

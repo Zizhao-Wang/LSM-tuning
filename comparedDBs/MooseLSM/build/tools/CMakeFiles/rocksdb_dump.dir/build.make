@@ -73,15 +73,15 @@ tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o: tools/CMakeFiles/rocks
 tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o: ../tools/dump/rocksdb_dump.cc
 tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o: tools/CMakeFiles/rocksdb_dump.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o -MF CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o.d -o CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/dump/rocksdb_dump.cc
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o -MF CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o.d -o CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/dump/rocksdb_dump.cc
 
 tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.i"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/dump/rocksdb_dump.cc > CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.i
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/dump/rocksdb_dump.cc > CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.i
 
 tools/CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.s"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/dump/rocksdb_dump.cc -o CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.s
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/dump/rocksdb_dump.cc -o CMakeFiles/rocksdb_dump.dir/dump/rocksdb_dump.cc.s
 
 # Object files for target rocksdb_dump
 rocksdb_dump_OBJECTS = \

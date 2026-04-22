@@ -73,15 +73,15 @@ CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o: CMakeFiles/mem
 CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o: ../memtable/memtablerep_bench.cc
 CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o: CMakeFiles/memtablerep_bench.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o -MF CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o.d -o CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/memtable/memtablerep_bench.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o -MF CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o.d -o CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/memtable/memtablerep_bench.cc
 
 CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/memtable/memtablerep_bench.cc > CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/memtable/memtablerep_bench.cc > CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.i
 
 CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/memtable/memtablerep_bench.cc -o CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/memtable/memtablerep_bench.cc -o CMakeFiles/memtablerep_bench.dir/memtable/memtablerep_bench.cc.s
 
 # Object files for target memtablerep_bench
 memtablerep_bench_OBJECTS = \

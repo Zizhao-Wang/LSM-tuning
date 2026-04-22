@@ -143,7 +143,7 @@ for i in 49 50 30 1; do
                         echo "$num_format2"
 
                                 
-                        ../../../rocksdb_autumn/release/db_bench \
+                        ../../../rocksdb/release/db_bench \
                             --db=$db_dir \
                             --workload_num=$workload_kvs \
                             --use_direct_reads=true \

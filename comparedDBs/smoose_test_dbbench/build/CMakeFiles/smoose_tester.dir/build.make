@@ -73,85 +73,85 @@ CMakeFiles/smoose_tester.dir/main.cpp.o: CMakeFiles/smoose_tester.dir/flags.make
 CMakeFiles/smoose_tester.dir/main.cpp.o: ../main.cpp
 CMakeFiles/smoose_tester.dir/main.cpp.o: CMakeFiles/smoose_tester.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/smoose_tester.dir/main.cpp.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/main.cpp.o -MF CMakeFiles/smoose_tester.dir/main.cpp.o.d -o CMakeFiles/smoose_tester.dir/main.cpp.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/main.cpp
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/main.cpp.o -MF CMakeFiles/smoose_tester.dir/main.cpp.o.d -o CMakeFiles/smoose_tester.dir/main.cpp.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/main.cpp
 
 CMakeFiles/smoose_tester.dir/main.cpp.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/smoose_tester.dir/main.cpp.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/main.cpp > CMakeFiles/smoose_tester.dir/main.cpp.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/main.cpp > CMakeFiles/smoose_tester.dir/main.cpp.i
 
 CMakeFiles/smoose_tester.dir/main.cpp.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/smoose_tester.dir/main.cpp.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/main.cpp -o CMakeFiles/smoose_tester.dir/main.cpp.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/main.cpp -o CMakeFiles/smoose_tester.dir/main.cpp.s
 
 CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o: CMakeFiles/smoose_tester.dir/flags.make
 CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o: ../mixgraph_workload.cc
 CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o: CMakeFiles/smoose_tester.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_2) "Building CXX object CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o -MF CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o.d -o CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/mixgraph_workload.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o -MF CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o.d -o CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/mixgraph_workload.cc
 
 CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/mixgraph_workload.cc > CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/mixgraph_workload.cc > CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.i
 
 CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/mixgraph_workload.cc -o CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/mixgraph_workload.cc -o CMakeFiles/smoose_tester.dir/mixgraph_workload.cc.s
 
 CMakeFiles/smoose_tester.dir/random.cc.o: CMakeFiles/smoose_tester.dir/flags.make
 CMakeFiles/smoose_tester.dir/random.cc.o: ../random.cc
 CMakeFiles/smoose_tester.dir/random.cc.o: CMakeFiles/smoose_tester.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_3) "Building CXX object CMakeFiles/smoose_tester.dir/random.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/random.cc.o -MF CMakeFiles/smoose_tester.dir/random.cc.o.d -o CMakeFiles/smoose_tester.dir/random.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/random.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/random.cc.o -MF CMakeFiles/smoose_tester.dir/random.cc.o.d -o CMakeFiles/smoose_tester.dir/random.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/random.cc
 
 CMakeFiles/smoose_tester.dir/random.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/smoose_tester.dir/random.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/random.cc > CMakeFiles/smoose_tester.dir/random.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/random.cc > CMakeFiles/smoose_tester.dir/random.cc.i
 
 CMakeFiles/smoose_tester.dir/random.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/smoose_tester.dir/random.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/random.cc -o CMakeFiles/smoose_tester.dir/random.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/random.cc -o CMakeFiles/smoose_tester.dir/random.cc.s
 
 CMakeFiles/smoose_tester.dir/port_posix.cc.o: CMakeFiles/smoose_tester.dir/flags.make
 CMakeFiles/smoose_tester.dir/port_posix.cc.o: ../port_posix.cc
 CMakeFiles/smoose_tester.dir/port_posix.cc.o: CMakeFiles/smoose_tester.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_4) "Building CXX object CMakeFiles/smoose_tester.dir/port_posix.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/port_posix.cc.o -MF CMakeFiles/smoose_tester.dir/port_posix.cc.o.d -o CMakeFiles/smoose_tester.dir/port_posix.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/port_posix.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/port_posix.cc.o -MF CMakeFiles/smoose_tester.dir/port_posix.cc.o.d -o CMakeFiles/smoose_tester.dir/port_posix.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/port_posix.cc
 
 CMakeFiles/smoose_tester.dir/port_posix.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/smoose_tester.dir/port_posix.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/port_posix.cc > CMakeFiles/smoose_tester.dir/port_posix.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/port_posix.cc > CMakeFiles/smoose_tester.dir/port_posix.cc.i
 
 CMakeFiles/smoose_tester.dir/port_posix.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/smoose_tester.dir/port_posix.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/port_posix.cc -o CMakeFiles/smoose_tester.dir/port_posix.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/port_posix.cc -o CMakeFiles/smoose_tester.dir/port_posix.cc.s
 
 CMakeFiles/smoose_tester.dir/histogram.cc.o: CMakeFiles/smoose_tester.dir/flags.make
 CMakeFiles/smoose_tester.dir/histogram.cc.o: ../histogram.cc
 CMakeFiles/smoose_tester.dir/histogram.cc.o: CMakeFiles/smoose_tester.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_5) "Building CXX object CMakeFiles/smoose_tester.dir/histogram.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/histogram.cc.o -MF CMakeFiles/smoose_tester.dir/histogram.cc.o.d -o CMakeFiles/smoose_tester.dir/histogram.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/histogram.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/histogram.cc.o -MF CMakeFiles/smoose_tester.dir/histogram.cc.o.d -o CMakeFiles/smoose_tester.dir/histogram.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/histogram.cc
 
 CMakeFiles/smoose_tester.dir/histogram.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/smoose_tester.dir/histogram.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/histogram.cc > CMakeFiles/smoose_tester.dir/histogram.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/histogram.cc > CMakeFiles/smoose_tester.dir/histogram.cc.i
 
 CMakeFiles/smoose_tester.dir/histogram.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/smoose_tester.dir/histogram.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/histogram.cc -o CMakeFiles/smoose_tester.dir/histogram.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/histogram.cc -o CMakeFiles/smoose_tester.dir/histogram.cc.s
 
 CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o: CMakeFiles/smoose_tester.dir/flags.make
 CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o: ../persistent_cache_tier.cc
 CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o: CMakeFiles/smoose_tester.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_6) "Building CXX object CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o -MF CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o.d -o CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/persistent_cache_tier.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o -MF CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o.d -o CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/persistent_cache_tier.cc
 
 CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/persistent_cache_tier.cc > CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/persistent_cache_tier.cc > CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.i
 
 CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/persistent_cache_tier.cc -o CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/smoose_test_dbbench/persistent_cache_tier.cc -o CMakeFiles/smoose_tester.dir/persistent_cache_tier.cc.s
 
 # Object files for target smoose_tester
 smoose_tester_OBJECTS = \

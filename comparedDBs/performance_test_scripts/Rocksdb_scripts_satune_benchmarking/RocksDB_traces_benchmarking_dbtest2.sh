@@ -9,21 +9,21 @@ declare -A slowdown_map
 declare -A stop_map
 
 # 为不同的ct0值设定对应的slowdown和stop值
-slowdown_map[1]=8
-slowdown_map[2]=8
-slowdown_map[4]=16
-slowdown_map[8]=16
-slowdown_map[12]=20
+slowdown_map[1]=1
+slowdown_map[2]=2
+slowdown_map[4]=4
+slowdown_map[8]=15
+slowdown_map[12]=12
 slowdown_map[16]=20
 slowdown_map[32]=60
 slowdown_map[64]=100
 slowdown_map[400000]=800000
 
-stop_map[1]=12
-stop_map[2]=12
-stop_map[4]=20
-stop_map[8]=32
-stop_map[12]=32
+stop_map[1]=2
+stop_map[2]=3
+stop_map[4]=5
+stop_map[8]=25
+stop_map[12]=12
 stop_map[16]=32
 stop_map[32]=80
 stop_map[64]=144
@@ -67,7 +67,7 @@ cluster_table_size_map[51]=3
 cluster_table_size_map[30]=8
 cluster_table_size_map[1]=0
 cluster_table_size_map[48]=300
-cluster_table_size_map[12]=200
+cluster_table_size_map[12]=500
 cluster_table_size_map[13]=500
 
 declare -A cluster_block_cache_size_map
@@ -105,8 +105,8 @@ for i in 13; do
     fi
         cd $dir1
             for cluster_a in "$i"; do  # 
-                for ct0 in 16 32 64 ; do  # 
-                for mb in  1100 2200 4300 ; do
+                for ct0 in 64 ; do  # 
+                for mb in 8192 ; do
                 for buffer_size in 67108864; do
                 for workload_kvs in 100000000 ; do 
                     num_format2=$(convert_to_billion_format "$workload_kvs")
@@ -145,7 +145,7 @@ for i in 13; do
                         if [ "$(ls -A $db_dir)" ]; then
                             rm -rf "${db_dir:?}/"*
                         fi
-                        
+
                         # 获取对应ct0的slowdown和stop值
                         slowdown_value=${slowdown_map[$ct0]}
                         stop_value=${stop_map[$ct0]}
@@ -162,6 +162,7 @@ for i in 13; do
                         ../../../rocksdb/release/db_bench \
                             --db=$db_dir \
                             --max_bytes_for_level_base=$level1_max_bytes \
+                            --max_bytes_for_level_multiplier=15 \
                             --workload_num=$workload_kvs \
                             --use_direct_reads=true \
                             --key_size=$key_size_twitter \

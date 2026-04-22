@@ -1,0 +1,156 @@
+The memtable size is:67108864 
+=== Cluster Configuration ===
+level_capacities: 11, 11, 12, 6
+run_numbers: 2, 2, 2, 1
+Opening database at: /mnt/pmem1/MooseLSM/PreLoad_Cluster40_0.1B_key24_mem64MB_CT4_L1base512_mixed_read_0.0_write_1.0
+Database opened successfully!
+Loading keys from CSV file...
+Loaded 99999999 keys from CSV file
+
+========== BEFORE CONVERSION ==========
+Segment		Range			GET	PUT	RMW	RANGE
+----------------------------------------------------------------------
+[0] 0%-10%	[0 - 9999998]	2032644(20.3%)	7967355(79.7%)	0(0.0%)	0(0.0%)
+[1] 10%-20%	[9999999 - 19999997]	2068270(20.7%)	7931729(79.3%)	0(0.0%)	0(0.0%)
+[2] 20%-30%	[19999998 - 29999996]	2098478(21.0%)	7901521(79.0%)	0(0.0%)	0(0.0%)
+[3] 30%-40%	[29999997 - 39999995]	2108666(21.1%)	7891333(78.9%)	0(0.0%)	0(0.0%)
+[4] 40%-50%	[39999996 - 49999994]	2118798(21.2%)	7881201(78.8%)	0(0.0%)	0(0.0%)
+[5] 50%-60%	[49999995 - 59999993]	2122208(21.2%)	7877791(78.8%)	0(0.0%)	0(0.0%)
+[6] 60%-70%	[59999994 - 69999992]	2124175(21.2%)	7875824(78.8%)	0(0.0%)	0(0.0%)
+[7] 70%-80%	[69999993 - 79999991]	2139054(21.4%)	7860945(78.6%)	0(0.0%)	0(0.0%)
+[8] 80%-90%	[79999992 - 89999990]	2169441(21.7%)	7830558(78.3%)	0(0.0%)	0(0.0%)
+[9] 90%-100%	[89999991 - 99999998]	2169252(21.7%)	7830756(78.3%)	0(0.0%)	0(0.0%)
+----------------------------------------------------------------------
+TOTAL:		[0 - 99999998]	21150986(21.2%)	78849013(78.8%)	0(0.0%)	0(0.0%)
+
+Plan: Convert 39424506 PUT to RANGE QUERY (50% of all PUT)
+
+========== AFTER CONVERSION ==========
+Segment		Range			GET	PUT	RMW	RANGE
+----------------------------------------------------------------------
+[0] 0%-10%	[0 - 9999998]	2032644(20.3%)	3983826(39.8%)	0(0.0%)	3983529(39.8%)
+[1] 10%-20%	[9999999 - 19999997]	2068270(20.7%)	3964755(39.6%)	0(0.0%)	3966974(39.7%)
+[2] 20%-30%	[19999998 - 29999996]	2098478(21.0%)	3951562(39.5%)	0(0.0%)	3949959(39.5%)
+[3] 30%-40%	[29999997 - 39999995]	2108666(21.1%)	3942367(39.4%)	0(0.0%)	3948966(39.5%)
+[4] 40%-50%	[39999996 - 49999994]	2118798(21.2%)	3939114(39.4%)	0(0.0%)	3942087(39.4%)
+[5] 50%-60%	[49999995 - 59999993]	2122208(21.2%)	3938768(39.4%)	0(0.0%)	3939023(39.4%)
+[6] 60%-70%	[59999994 - 69999992]	2124175(21.2%)	3940309(39.4%)	0(0.0%)	3935515(39.4%)
+[7] 70%-80%	[69999993 - 79999991]	2139054(21.4%)	3931526(39.3%)	0(0.0%)	3929419(39.3%)
+[8] 80%-90%	[79999992 - 89999990]	2169441(21.7%)	3917560(39.2%)	0(0.0%)	3912998(39.1%)
+[9] 90%-100%	[89999991 - 99999998]	2169252(21.7%)	3914720(39.1%)	0(0.0%)	3916036(39.2%)
+----------------------------------------------------------------------
+TOTAL:		[0 - 99999998]	21150986(21.2%)	39424507(39.4%)	0(0.0%)	39424506(39.4%)
+
+
+--- Mixed Workload Configuration ---
+Total operations:    100000000
+Range query percent: 50%
+Scan length:         10
+Key size:            24
+Value size:          1000
+------------------------------------
+
+Rate limiting enabled: 100 us delay per op (max ~10000.0 ops/sec)
+[Perf] perf_level=1 (disabled)
+[19:49:43] [2233.8s] Ops: 10000000 (R:2032645/W:3983826/RQ:3983529), Throughput: 4476.63 ops/sec
+[20:25:42] [4392.5s] Ops: 20000000 (R:4100915/W:7948581/RQ:7950504), Throughput: 4632.54 ops/sec
+[21:03:01] [6631.5s] Ops: 30000000 (R:6199393/W:11900143/RQ:11900464), Throughput: 4466.28 ops/sec
+[21:42:17] [8987.4s] Ops: 40000000 (R:8308059/W:15842513/RQ:15849428), Throughput: 4244.58 ops/sec
+[22:20:04] [11254.6s] Ops: 50000000 (R:10426856/W:19781626/RQ:19791518), Throughput: 4410.72 ops/sec
+[22:59:01] [13591.7s] Ops: 60000000 (R:12549065/W:23720397/RQ:23730538), Throughput: 4278.82 ops/sec
+[23:37:43] [15913.8s] Ops: 70000000 (R:14673241/W:27660703/RQ:27666056), Throughput: 4306.51 ops/sec
+[00:18:09] [18340.3s] Ops: 80000000 (R:16812294/W:31592230/RQ:31595476), Throughput: 4121.20 ops/sec
+[00:56:37] [20647.8s] Ops: 90000000 (R:18981735/W:35509788/RQ:35508477), Throughput: 4333.57 ops/sec
+[01:38:56] [23187.4s] Ops: 100000000 (R:21150987/W:39424507/RQ:39424506), Throughput: 3937.67 ops/sec
+
+--- Performance of Workload Summary ---
+Total operations:     100000000
+Read operations:      21150987 (21.2%)
+Write operations:     39424507 (39.4%)
+Range queries:        39424506 (39.4%)
+
+Read Results:
+  Keys found:         47346875 (78.2%)
+  Keys not found:     4604133 (21.8%)
+  Read errors:        0
+
+Write Results:
+  Write errors:       0
+
+Range Query Results:
+  Total keys scanned: 394244838
+  Avg keys per scan:  10.0
+
+Performance:
+  Total time:           23187.39 seconds
+  Total throughput:     4312.69 ops/sec
+  Overall avg latency:  70.49 us
+
+  Read performance:
+    - Read throughput:    33499.86 ops/sec
+    - Avg read latency:   29.85 us
+
+  Write performance:
+    - Write throughput:   47927.70 ops/sec
+    - Avg write latency:  20.86 us
+
+  Range query performance:
+    - Range throughput:   7046.15 ops/sec
+    - Avg range latency:  141.92 us
+    - Avg latency per key: 14.19 us
+------------------------------
+
+--- RocksDB Statistics ---
+
+** Compaction Stats [default] **
+Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+  L0      3/0   117.18 MB   0.8      0.0     0.0      0.0      23.8     23.8       0.0   1.0      0.0    702.4     34.76             34.63       623    0.056       0      0       0.0       0.0
+  L4      4/0   213.50 MB   0.8     41.7    17.6     24.1      37.4     13.3       0.0   2.1    786.0    705.2     54.37             54.21       115    0.473     43M  4451K       0.0       0.0
+  L5     24/0   743.69 MB   0.9     30.9    15.2     15.7      27.9     12.2       3.6   1.8    776.8    702.7     40.69             40.55       179    0.227     32M  3056K       0.0       0.0
+  L6    147/0    7.84 GB   0.0     58.1    15.6     42.5      50.3      7.8       0.0   3.2    857.5    743.4     69.34             69.20       248    0.280     60M  8029K       0.0       0.0
+ Sum    178/0    8.89 GB   0.0    130.7    48.4     82.3     139.6     57.2       3.6   5.9    671.8    717.5    199.17            198.59      1165    0.171    135M    15M       0.0       0.0
+ Int      0/0    0.00 KB   0.0      2.5     0.9      1.5       2.6      1.1       0.1   5.6    687.1    718.2      3.66              3.65        24    0.153   2553K   360K       0.0       0.0
+
+** Compaction Stats [default] **
+Priority    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Low      0/0    0.00 KB   0.0    130.7    48.4     82.3     115.7     33.4       0.0   0.0    813.9    720.7    164.41            163.97       542    0.303    135M    15M       0.0       0.0
+High      0/0    0.00 KB   0.0      0.0     0.0      0.0      23.8     23.8       0.0   0.0      0.0    702.4     34.76             34.63       623    0.056       0      0       0.0       0.0
+
+Blob file count: 0, total size: 0.0 GB, garbage size: 0.0 GB, space amp: 0.0
+
+Uptime(secs): 23335.8 total, 535.8 interval
+Flush(GB): cumulative 23.841, interval 0.458
+AddFile(GB): cumulative 0.000, interval 0.000
+AddFile(Total Files): cumulative 0, interval 0
+AddFile(L0 Files): cumulative 0, interval 0
+AddFile(Keys): cumulative 0, interval 0
+Cumulative compaction: 139.56 GB write, 6.12 MB/s write, 130.67 GB read, 5.73 MB/s read, 199.2 seconds
+Interval compaction: 2.57 GB write, 4.91 MB/s write, 2.46 GB read, 4.69 MB/s read, 3.7 seconds
+Write Stall (count): cf-l0-file-count-limit-delays-with-ongoing-compaction: 0, cf-l0-file-count-limit-stops-with-ongoing-compaction: 0, l0-file-count-limit-delays: 0, l0-file-count-limit-stops: 0, memtable-limit-delrocksdb.block-cache-usage COUNT : 8354472
+rocksdb.block-cache-pinned-usage COUNT : 88
+rocksdb.estimate-table-readers-mem COUNT : 49591888
+ays: 0, memtable-limit-stops: 0, pending-compaction-bytes-delays: 0, pending-compaction-bytes-stops: 0, total-delays: 0, total-stops: 0
+Block cache LRUCache@0x5d816d948dd0#1707653 capacity: 8.00 MB seed: 240893253 usage: 7.97 MB table_size: 2048 occupancy: 1954 collections: 39 last_copies: 0 last_secs: 0.000801 secs_since: 535
+Block cache entry stats(count,size,portion): DataBlock(1955,7.81 MB,97.6576%) Misc(1,0.00 KB,0%)
+
+** File Read Latency Histogram By Level [default] **
+
+** DB Stats **
+Uptime(secs): 23335.8 total, 535.8 interval
+Cumulative writes: 39M writes, 39M keys, 39M commit groups, 1.0 writes per commit group, ingest: 38.19 GB, 1.68 MB/s
+Cumulative WAL: 39M writes, 0 syncs, 39424507.00 writes per sync, written: 38.19 GB, 1.68 MB/s
+Cumulative stall: 00:00:0.000 H:M:S, 0.0 percent
+Interval writes: 800K writes, 800K keys, 800K commit groups, 1.0 writes per commit group, ingest: 793.46 MB, 1.48 MB/s
+Interval WAL: 800K writes, 0 syncs, 800004.00 writes per sync, written: 0.77 GB, 1.48 MB/s
+Interval stall: 00:00:0.000 H:M:S, 0.0 percent
+Write Stall (count): write-buffer-manager-limit-stops: 0
+
+--------------------------
+[Perf] perf_level=1 → Performance statistics disabled.
+
+--- Process Memory Usage ---
+VmRSS:	  190808 kB
+----------------------------
+Database closed.

@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/db_with_timestamp_compaction_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/db_with_timestamp_compaction_test[1]_tests.cmake")
+else()
+  add_test(db_with_timestamp_compaction_test_NOT_BUILT db_with_timestamp_compaction_test_NOT_BUILT)
+endif()

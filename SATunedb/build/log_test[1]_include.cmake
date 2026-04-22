@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/log_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/log_test[1]_tests.cmake")
+else()
+  add_test(log_test_NOT_BUILT log_test_NOT_BUILT)
+endif()

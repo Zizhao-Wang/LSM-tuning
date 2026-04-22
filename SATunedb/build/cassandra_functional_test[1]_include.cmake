@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/cassandra_functional_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/cassandra_functional_test[1]_tests.cmake")
+else()
+  add_test(cassandra_functional_test_NOT_BUILT cassandra_functional_test_NOT_BUILT)
+endif()

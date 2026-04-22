@@ -73,15 +73,15 @@ tools/CMakeFiles/ldb.dir/ldb.cc.o: tools/CMakeFiles/ldb.dir/flags.make
 tools/CMakeFiles/ldb.dir/ldb.cc.o: ../tools/ldb.cc
 tools/CMakeFiles/ldb.dir/ldb.cc.o: tools/CMakeFiles/ldb.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object tools/CMakeFiles/ldb.dir/ldb.cc.o"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/ldb.dir/ldb.cc.o -MF CMakeFiles/ldb.dir/ldb.cc.o.d -o CMakeFiles/ldb.dir/ldb.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/ldb.cc
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/ldb.dir/ldb.cc.o -MF CMakeFiles/ldb.dir/ldb.cc.o.d -o CMakeFiles/ldb.dir/ldb.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/ldb.cc
 
 tools/CMakeFiles/ldb.dir/ldb.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/ldb.dir/ldb.cc.i"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/ldb.cc > CMakeFiles/ldb.dir/ldb.cc.i
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/ldb.cc > CMakeFiles/ldb.dir/ldb.cc.i
 
 tools/CMakeFiles/ldb.dir/ldb.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/ldb.dir/ldb.cc.s"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/ldb.cc -o CMakeFiles/ldb.dir/ldb.cc.s
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/ldb.cc -o CMakeFiles/ldb.dir/ldb.cc.s
 
 # Object files for target ldb
 ldb_OBJECTS = \

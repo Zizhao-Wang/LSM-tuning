@@ -73,15 +73,15 @@ CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o
 CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o: ../utilities/persistent_cache/hash_table_bench.cc
 CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o: CMakeFiles/hash_table_bench.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o -MF CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o.d -o CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/utilities/persistent_cache/hash_table_bench.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o -MF CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o.d -o CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/utilities/persistent_cache/hash_table_bench.cc
 
 CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/utilities/persistent_cache/hash_table_bench.cc > CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/utilities/persistent_cache/hash_table_bench.cc > CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.i
 
 CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/utilities/persistent_cache/hash_table_bench.cc -o CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/utilities/persistent_cache/hash_table_bench.cc -o CMakeFiles/hash_table_bench.dir/utilities/persistent_cache/hash_table_bench.cc.s
 
 # Object files for target hash_table_bench
 hash_table_bench_OBJECTS = \

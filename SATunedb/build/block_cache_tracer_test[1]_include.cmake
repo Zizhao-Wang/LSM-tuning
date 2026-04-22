@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/block_cache_tracer_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/block_cache_tracer_test[1]_tests.cmake")
+else()
+  add_test(block_cache_tracer_test_NOT_BUILT block_cache_tracer_test_NOT_BUILT)
+endif()

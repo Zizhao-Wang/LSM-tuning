@@ -73,15 +73,15 @@ third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.o: thi
 third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.o: ../third-party/gtest-1.8.1/fused-src/gtest/gtest-all.cc
 third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.o: third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.o"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/third-party/gtest-1.8.1/fused-src/gtest && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.o -MF CMakeFiles/gtest.dir/gtest-all.cc.o.d -o CMakeFiles/gtest.dir/gtest-all.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/third-party/gtest-1.8.1/fused-src/gtest/gtest-all.cc
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/third-party/gtest-1.8.1/fused-src/gtest && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.o -MF CMakeFiles/gtest.dir/gtest-all.cc.o.d -o CMakeFiles/gtest.dir/gtest-all.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/third-party/gtest-1.8.1/fused-src/gtest/gtest-all.cc
 
 third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/gtest.dir/gtest-all.cc.i"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/third-party/gtest-1.8.1/fused-src/gtest && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/third-party/gtest-1.8.1/fused-src/gtest/gtest-all.cc > CMakeFiles/gtest.dir/gtest-all.cc.i
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/third-party/gtest-1.8.1/fused-src/gtest && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/third-party/gtest-1.8.1/fused-src/gtest/gtest-all.cc > CMakeFiles/gtest.dir/gtest-all.cc.i
 
 third-party/gtest-1.8.1/fused-src/gtest/CMakeFiles/gtest.dir/gtest-all.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/gtest.dir/gtest-all.cc.s"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/third-party/gtest-1.8.1/fused-src/gtest && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/third-party/gtest-1.8.1/fused-src/gtest/gtest-all.cc -o CMakeFiles/gtest.dir/gtest-all.cc.s
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/third-party/gtest-1.8.1/fused-src/gtest && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/third-party/gtest-1.8.1/fused-src/gtest/gtest-all.cc -o CMakeFiles/gtest.dir/gtest-all.cc.s
 
 # Object files for target gtest
 gtest_OBJECTS = \

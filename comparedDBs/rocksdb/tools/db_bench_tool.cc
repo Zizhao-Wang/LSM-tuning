@@ -309,6 +309,7 @@ DEFINE_int32(duration, 0,
 
 DEFINE_string(value_size_distribution_type, "fixed",
               "Value size distribution type: fixed, uniform, normal");
+DEFINE_int32(range_query_source, 0, "Source operation type to convert to range query: 0=GET, 1=PUT");
 
 
 DEFINE_string(data_file_path, "", "Value size distribution type: fixed, uniform, normal");
@@ -321,6 +322,8 @@ DEFINE_string(Read_data_file, "", "Value size distribution type: fixed, uniform,
 
 DEFINE_string(mem_log_file,"", "mem usage path");
               
+DEFINE_int32(range_query_percent, 0, "Percentage of range query operations to add (0-100)");
+
 
 DEFINE_int32(value_size, 128, "Size of each value in fixed distribution");
 static unsigned int value_size = 128;
@@ -411,6 +414,8 @@ DEFINE_int32(disposable_entries_value_size, 64,
              "Size of the values (in bytes) of the entries targeted by "
              "selective deletes. "
              "(only compatible with fillanddeleteuniquerandom benchmark)");
+
+DEFINE_int64(scan_length, 50, "Number of keys to scan in range query");
 
 DEFINE_uint64(
     persistent_entries_batch_size, 0,
@@ -585,6 +590,40 @@ DEFINE_int32(
 DEFINE_int64(cache_size, 32 << 20,  // 32MB
              "Number of bytes to use as a cache of uncompressed data");
 
+DEFINE_string(cache_size_per_workload, "",
+              "Comma-separated list of cache sizes (bytes) for each workload. "
+              "Must match the number of workloads in data_file_path. "
+              "Example: '33554432,67108864,16777216'");
+
+DEFINE_string(open_files_per_workload, "",
+              "Comma-separated list of max_open_files for each workload. "
+              "Must match the number of workloads in data_file_path. "
+              "Example: '-1,1000,500'");
+
+DEFINE_string(key_size_per_workload, "",
+              "Comma-separated list of key sizes for each workload. "
+              "Example: '16,24,16'");
+
+DEFINE_string(value_size_per_workload, "",
+              "Comma-separated list of value sizes for each workload. "
+              "Example: '128,256,512'");
+
+DEFINE_string(level0_compaction_trigger_per_workload, "",
+              "Comma-separated list of level0_file_num_compaction_trigger "
+              "for each workload. Example: '4,2,8'");
+
+DEFINE_string(level0_slowdown_trigger_per_workload, "",
+              "Comma-separated list of level0_slowdown_writes_trigger "
+              "for each workload. Example: '20,12,36'");
+
+DEFINE_string(level_base_per_workload, "",
+              "Comma-separated list of max_bytes_for_level_base (bytes) "
+              "for each workload. Example: '268435456,536870912'");
+
+DEFINE_string(level_multiplier_per_workload, "",
+              "Comma-separated list of max_bytes_for_level_multiplier "
+              "for each workload. Example: '10,8,10'");
+
 DEFINE_int32(cache_numshardbits, -1,
              "Number of shards for the block cache"
              " is 2 ** cache_numshardbits. Negative means use default settings."
@@ -752,6 +791,9 @@ DEFINE_int64(compressed_cache_size, -1,
 DEFINE_int64(row_cache_size, 0,
              "Number of bytes to use as a cache of individual rows"
              " (0 = disabled).");
+
+// 在文件头部添加 FLAG
+DEFINE_int64(ops_delay_us, 0, "Delay in microseconds after each operation (0 = no delay)");
 
 DEFINE_int32(open_files, ROCKSDB_NAMESPACE::Options().max_open_files,
              "Maximum number of files to keep open at the same time"
@@ -2214,10 +2256,25 @@ class Stats {
   std::unordered_map<OperationType, std::shared_ptr<HistogramImpl>,
                      std::hash<unsigned char>>
       hist_;
+  std::unordered_map<OperationType, std::shared_ptr<HistogramImpl>,
+                     std::hash<unsigned char>>
+      workload_hist_;
+  std::string workload_label_;
   std::string message_;
   bool exclude_from_merge_;
   ReporterAgent* reporter_agent_;  // does not own
   friend class CombinedStats;
+
+  void AddHistogramSample(
+      std::unordered_map<OperationType, std::shared_ptr<HistogramImpl>,
+                         std::hash<unsigned char>>& hist_map,
+      enum OperationType op_type, uint64_t micros) {
+    if (hist_map.find(op_type) == hist_map.end()) {
+      auto hist_temp = std::make_shared<HistogramImpl>();
+      hist_map.insert({op_type, std::move(hist_temp)});
+    }
+    hist_map[op_type]->Add(micros);
+  }
 
  public:
   Stats() : clock_(FLAGS_env->GetSystemClock().get()) { Start(-1); }
@@ -2231,6 +2288,8 @@ class Stats {
     next_report_ = FLAGS_stats_interval ? FLAGS_stats_interval : 100;
     last_op_finish_ = start_;
     hist_.clear();
+    workload_hist_.clear();
+    workload_label_.clear();
     done_ = 0;
     last_report_done_ = 0;
     bytes_ = 0;
@@ -2326,6 +2385,31 @@ class Stats {
     last_op_finish_ = clock_->NowMicros();
   }
 
+  void StartWorkloadHistogram(const std::string& workload_label) {
+    workload_label_ = workload_label;
+    workload_hist_.clear();
+  }
+
+  void ReportAndResetWorkloadHistogram() {
+    if (!FLAGS_histogram || workload_hist_.empty()) {
+      workload_hist_.clear();
+      workload_label_.clear();
+      return;
+    }
+
+    fprintf(stdout, "=== Histogram for workload: %s ===\n",
+            workload_label_.empty() ? "unknown" : workload_label_.c_str());
+    for (auto it = workload_hist_.begin(); it != workload_hist_.end(); ++it) {
+      fprintf(stdout, "Microseconds per %s:\n%s\n",
+              OperationTypeString[it->first].c_str(),
+              it->second->ToString().c_str());
+    }
+    fflush(stdout);
+
+    workload_hist_.clear();
+    workload_label_.clear();
+  }
+
   std::string getCurrentTime() {
     char timeStr[100];
     time_t now = time(NULL);
@@ -2418,11 +2502,10 @@ class Stats {
       uint64_t now = clock_->NowMicros();
       uint64_t micros = now - last_op_finish_;
 
-      if (hist_.find(op_type) == hist_.end()) {
-        auto hist_temp = std::make_shared<HistogramImpl>();
-        hist_.insert({op_type, std::move(hist_temp)});
+      AddHistogramSample(hist_, op_type, micros);
+      if (!workload_label_.empty()) {
+        AddHistogramSample(workload_hist_, op_type, micros);
       }
-      hist_[op_type]->Add(micros);
 
       if (micros >= FLAGS_slow_usecs && !FLAGS_stats_interval) {
         fprintf(stderr, "long op: %" PRIu64 " micros%30s\r", micros, "");
@@ -2573,11 +2656,10 @@ class Stats {
         micros = now - last_op_finish_;
       }
 
-      if (hist_.find(op_type) == hist_.end()) {
-        auto hist_temp = std::make_shared<HistogramImpl>();
-        hist_.insert({op_type, std::move(hist_temp)});
+      AddHistogramSample(hist_, op_type, micros);
+      if (!workload_label_.empty()) {
+        AddHistogramSample(workload_hist_, op_type, micros);
       }
-      hist_[op_type]->Add(micros);
 
       if (micros >= FLAGS_slow_usecs && !FLAGS_stats_interval) {
         fprintf(stderr, "long op: %" PRIu64 " micros%30s\r", micros, "");
@@ -3843,6 +3925,10 @@ class Benchmark {
         method = &Benchmark::WritemixWorkload;
       } else if (name == "clusterQuery") {
         method = &Benchmark::Cluster_benchmarking;
+      } else if (name == "clusterRangeQuery") {
+        method = &Benchmark::Cluster_range_benchmarking;
+      } else if (name == "clusterQueryDelay") {
+        method = &Benchmark::Cluster_benchmarking_delay;
       } else if (name == Slice("ycsba")) {
         method = &Benchmark::YCSB_A;
       } else if (name == Slice("ycsbb")) {
@@ -5370,6 +5456,15 @@ class Benchmark {
     Do_cluster_benchmarking(thread, RANDOM); 
   }
 
+  void Cluster_range_benchmarking(ThreadState* thread) { 
+    Do_cluster_benchmarking_withrange(thread, RANDOM); 
+  }
+
+  void Cluster_benchmarking_delay(ThreadState* thread) { 
+    Do_cluster_benchmarking_with_delay(thread, RANDOM);
+  }
+  
+
   void WriteUniqueRandom(ThreadState* thread) {
     DoWrite(thread, UNIQUE_RANDOM);
   }
@@ -5527,66 +5622,273 @@ class Benchmark {
     thread->stats.AddBytes(bytes);
   }
 
+  // 深度统计函数：分段分析转换前后的操作分布
+  void PrintDetailedStats(const std::vector<int>& ops, const std::string& label) {
+    int64_t total = ops.size();
+    if (total == 0) return;
+    
+    // 分成 10 段来统计
+    int num_segments = 10;
+    int64_t segment_size = total / num_segments;
+    
+    fprintf(stderr, "\n========== %s ==========\n", label.c_str());
+    fprintf(stderr, "Segment\t\tRange\t\t\tGET\tPUT\tRMW\tRANGE\n");
+    fprintf(stderr, "----------------------------------------------------------------------\n");
+    
+    int64_t total_get = 0, total_put = 0, total_rmw = 0, total_range = 0;
+    
+    for (int seg = 0; seg < num_segments; seg++) {
+      int64_t start = seg * segment_size;
+      int64_t end = (seg == num_segments - 1) ? total : (seg + 1) * segment_size;
+      
+      int64_t seg_get = 0, seg_put = 0, seg_rmw = 0, seg_range = 0;
+      
+      for (int64_t i = start; i < end; i++) {
+        switch (ops[i]) {
+          case 0: seg_get++; break;
+          case 1: seg_put++; break;
+          case 2: seg_rmw++; break;
+          case 3: seg_range++; break;
+        }
+      }
+      
+      total_get += seg_get;
+      total_put += seg_put;
+      total_rmw += seg_rmw;
+      total_range += seg_range;
+      
+      // 计算这一段的百分比
+      int64_t seg_total = end - start;
+      fprintf(stderr, "[%d] %d%%-%d%%\t[%ld - %ld]\t%ld(%.1f%%)\t%ld(%.1f%%)\t%ld(%.1f%%)\t%ld(%.1f%%)\n",
+              seg,
+              seg * 10, (seg + 1) * 10,
+              start, end - 1,
+              seg_get, (double)seg_get / seg_total * 100,
+              seg_put, (double)seg_put / seg_total * 100,
+              seg_rmw, (double)seg_rmw / seg_total * 100,
+              seg_range, (double)seg_range / seg_total * 100);
+    }
+    
+    fprintf(stderr, "----------------------------------------------------------------------\n");
+    fprintf(stderr, "TOTAL:\t\t[0 - %ld]\t%ld(%.1f%%)\t%ld(%.1f%%)\t%ld(%.1f%%)\t%ld(%.1f%%)\n\n",
+            total - 1,
+            total_get, (double)total_get / total * 100,
+            total_put, (double)total_put / total * 100,
+            total_rmw, (double)total_rmw / total * 100,
+            total_range, (double)total_range / total * 100);
+  }
+
+  std::vector<std::string> GetWorkloadFilePaths() {
+    std::vector<std::string> data_file_paths =
+        ROCKSDB_NAMESPACE::StringSplit(FLAGS_data_file_path, ',');
+    std::vector<std::string> normalized_paths;
+    normalized_paths.reserve(data_file_paths.size());
+    for (const auto& path : data_file_paths) {
+      std::string trimmed_path = ROCKSDB_NAMESPACE::trim(path);
+      if (!trimmed_path.empty()) {
+        normalized_paths.push_back(trimmed_path);
+      }
+    }
+
+    return normalized_paths;
+  }
 
   // 预加载函数 - 在benchmark开始前调用一次
   bool PreloadWorkloadData(std::vector<uint64_t>& workload_keys, std::vector<int>& workload_operations) {
     fprintf(stderr, "Starting to preload workload from: %s\n", FLAGS_data_file_path.c_str());
-    
-    std::ifstream csv_file(FLAGS_data_file_path);
-    if (!csv_file.is_open()) {
-      fprintf(stderr, "Unable to open file: %s\n", FLAGS_data_file_path.c_str());
+
+    std::vector<std::string> normalized_paths = GetWorkloadFilePaths();
+
+    if (normalized_paths.empty()) {
+      fprintf(stderr, "Unable to find valid file paths in: %s\n",
+              FLAGS_data_file_path.c_str());
       return false;
     }
-    
+
+    workload_keys.reserve(normalized_paths.size() * FLAGS_workload_num+100);
+    workload_operations.reserve(normalized_paths.size() * FLAGS_workload_num+100);
+
     std::string line;
-    std::getline(csv_file, line); // 跳过标题行
-    
-    // 预分配空间
-    workload_keys.reserve(FLAGS_workload_num);
-    workload_operations.reserve(FLAGS_workload_num);
-    
     std::stringstream line_stream;
     std::string cell;
     std::vector<std::string> row_data;
-    int64_t loaded_count = 0;
+    int64_t total_loaded_count = 0;
+
+    for (const auto& data_file_path : normalized_paths) {
+      std::ifstream csv_file(data_file_path);
+      if (!csv_file.is_open()) {
+        fprintf(stderr, "Unable to open file: %s\n", data_file_path.c_str());
+        return false;
+      }
+
+      std::getline(csv_file, line); // 跳过标题行
+
+      int64_t file_loaded_count = 0;
+      while (std::getline(csv_file, line) && file_loaded_count < FLAGS_workload_num) {
+        line_stream.clear();
+        line_stream.str("");
+        row_data.clear();
+
+        line_stream << line;
+        while (getline(line_stream, cell, ',')) {
+          row_data.push_back(cell);
+        }
+
+        if (row_data.size() != 7) {
+          fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
+          continue;
+        }
+
+        // 解析操作类型
+        int op_type = -1;
+        if (row_data[5] == "get" || row_data[5] == "gets") {
+          op_type = 0; // GET
+        } else if (row_data[5] == "add" || row_data[5] == "set") {
+          op_type = 1; // SET
+        } else if (row_data[5] == "cas") {
+          op_type = 2; // CAS
+        }
+
+        if (op_type >= 0) {
+          uint64_t key_id = std::stoull(row_data[1]);
+          workload_keys.push_back(key_id);
+          workload_operations.push_back(op_type);
+          file_loaded_count++;
+          total_loaded_count++;
+        }
+      }
+
+      csv_file.close();
+
+      if (file_loaded_count < FLAGS_workload_num) {
+        fprintf(stderr,
+                "File %s only loaded %ld operations, expected %ld\n",
+                data_file_path.c_str(), file_loaded_count, FLAGS_workload_num);
+        return false;
+      }
+
+      fprintf(stderr, "Loaded %ld operations from %s\n",
+              file_loaded_count, data_file_path.c_str());
+    }
+
+    fprintf(stderr, "Successfully preloaded %ld operations from %zu files\n",
+            workload_keys.size(), normalized_paths.size());
+    return true;
+  }
+
+  // 修改后的转换函数
+  void ConvertGetToRangeQuery(std::vector<int>& workload_operations, int range_query_percent) {
+    if (range_query_percent <= 0 || range_query_percent > 100) {
+      fprintf(stderr, "range_query_percent is %d, no conversion needed\n", range_query_percent);
+      return;
+    }
     
-    while (std::getline(csv_file, line) && loaded_count < FLAGS_workload_num+10) {
-      line_stream.clear();
-      line_stream.str("");
-      row_data.clear();
-      
-      line_stream << line;
-      while (getline(line_stream, cell, ',')) {
-        row_data.push_back(cell);
-      }
-      
-      if (row_data.size() != 7) {
-        fprintf(stderr, "Invalid CSV row format: %s\n", line.c_str());
-        continue;
-      }
-      
-      // 解析操作类型
-      int op_type = -1;
-      if (row_data[5] == "get" || row_data[5] == "gets") {
-        op_type = 0; // GET
-      } else if (row_data[5] == "add" || row_data[5] == "set") {
-        op_type = 1; // SET
-      } else if (row_data[5] == "cas") {
-        op_type = 2; // CAS
-      }
-      
-      if (op_type >= 0) {
-        uint64_t key_id = std::stoull(row_data[1]);
-        workload_keys.push_back(key_id);
-        workload_operations.push_back(op_type);
-        loaded_count++;
+    // 转换前的统计
+    PrintDetailedStats(workload_operations, "BEFORE CONVERSION");
+    
+    // 统计 GET 操作的位置
+    std::vector<int64_t> get_indices;
+    int64_t total_ops = workload_operations.size();
+    
+    for (int64_t i = 0; i < total_ops; i++) {
+      if (workload_operations[i] == 0) {
+        get_indices.push_back(i);
       }
     }
     
-    csv_file.close();
-    fprintf(stderr, "Successfully preloaded %ld operations\n", loaded_count);
-    return true;
+    int64_t total_get_count = get_indices.size();
+    double read_ratio = (double)total_get_count / total_ops * 100;
+    
+    // 计算需要转换的数量
+    double conversion_ratio = (double)range_query_percent / read_ratio;
+    if (conversion_ratio > 1.0) conversion_ratio = 1.0;
+    
+    int64_t num_to_convert = (int64_t)(total_get_count * conversion_ratio);
+    
+    fprintf(stderr, "Plan: Convert %ld GETs to RANGE (%.2f%% of all GETs)\n", 
+            num_to_convert, conversion_ratio * 100);
+    
+    // 从后半部分选择候选
+    int64_t start_index = total_get_count / 2;
+    if (num_to_convert > total_get_count - start_index) {
+      start_index = total_get_count - num_to_convert;
+      if (start_index < 0) start_index = 0;
+    }
+    
+    std::vector<int64_t> candidate_indices;
+    for (int64_t i = start_index; i < total_get_count; i++) {
+      candidate_indices.push_back(get_indices[i]);
+    }
+    
+    // 随机打乱并选取
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(candidate_indices.begin(), candidate_indices.end(), g);
+    
+    for (int64_t i = 0; i < num_to_convert && i < (int64_t)candidate_indices.size(); i++) {
+      workload_operations[candidate_indices[i]] = 3;
+    }
+    
+    // 转换后的统计
+    PrintDetailedStats(workload_operations, "AFTER CONVERSION");
   }
+
+void ConvertGetToRangeQuery2(std::vector<int>& workload_operations, int range_query_percent) {
+  if (range_query_percent <= 0 || range_query_percent > 100) {
+    fprintf(stderr, "range_query_percent is %d, no conversion needed\n", range_query_percent);
+    return;
+  }
+  
+  // 确定要转换的源操作类型
+  int source_op_type = FLAGS_range_query_source;
+  const char* source_name = (source_op_type == 0) ? "GET" : (source_op_type == 1) ? "PUT" : "UNKNOWN";
+  
+  if (source_op_type != 0 && source_op_type != 1) {
+    fprintf(stderr, "Invalid range_query_source: %d, must be 0 (GET) or 1 (PUT)\n", source_op_type);
+    return;
+  }
+  
+  // 转换前的统计
+  PrintDetailedStats(workload_operations, "BEFORE CONVERSION");
+  
+  // 收集所有目标操作类型的索引
+  std::vector<int64_t> source_indices;
+  int64_t total_ops = workload_operations.size();
+  
+  for (int64_t i = 0; i < total_ops; i++) {
+    if (workload_operations[i] == source_op_type) {
+      source_indices.push_back(i);
+    }
+  }
+  
+  int64_t total_source_count = source_indices.size();
+  
+  if (total_source_count == 0) {
+    fprintf(stderr, "No %s operations found to convert\n", source_name);
+    return;
+  }
+  
+  // 计算需要转换的数量
+  int64_t num_to_convert = (int64_t)(total_source_count * range_query_percent / 100.0);
+  
+  fprintf(stderr, "Plan: Convert %ld %s to RANGE QUERY (%d%% of all %s)\n", 
+          num_to_convert, source_name, range_query_percent, source_name);
+  
+  // 随机打乱所有目标操作的索引
+  std::random_device rd;
+  std::mt19937 g(rd());
+  std::shuffle(source_indices.begin(), source_indices.end(), g);
+  
+  // 取前 num_to_convert 个转换成 RANGE QUERY
+  for (int64_t i = 0; i < num_to_convert; i++) {
+    workload_operations[source_indices[i]] = 3;
+  }
+  
+  // 转换后的统计
+  PrintDetailedStats(workload_operations, "AFTER CONVERSION");
+  fflush(stderr);
+}
+
 
 
   void DoWrite_cluster(ThreadState* thread, WriteMode write_mode) {
@@ -5895,16 +6197,205 @@ class Benchmark {
       fprintf(stderr, "Failed to load workload data\n");
       return ;
     }
+    const std::vector<std::string> workload_file_paths = GetWorkloadFilePaths();
+    const int64_t total_workload_num =
+        static_cast<int64_t>(workload_operations.size());
+    size_t current_workload_idx = 0;
+    int64_t next_workload_boundary = FLAGS_workload_num;
 
     fprintf(stderr, "workload_num: %ld entries_per_batch_:%ld\n The key size:%d value size:%d \n", 
-      FLAGS_workload_num, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
+      total_workload_num, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
 
-    const int32_t k_size=FLAGS_key_size;
-    const int32_t v_size=FLAGS_value_size_;
+    int32_t k_size=FLAGS_key_size;
+    int32_t v_size=FLAGS_value_size_;
     fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
     thread->stats.ResetLastOpTime();
+    if (!workload_file_paths.empty()) {
+      thread->stats.StartWorkloadHistogram(workload_file_paths[0]);
+    }
 
-    for (int64_t i = 0; i < FLAGS_workload_num; i += 1) {
+    // Apply initial parameters for workload 0
+    {
+      fprintf(stderr,
+              "========== Workload 0 (%s) initial params ==========\n",
+              workload_file_paths.empty() ? "?" : workload_file_paths[0].c_str());
+      // key_size
+      if (!FLAGS_key_size_per_workload.empty()) {
+        auto ks_list = ROCKSDB_NAMESPACE::StringSplit(FLAGS_key_size_per_workload, ',');
+        if (!ks_list.empty()) {
+          try {
+            int32_t new_ks = std::stoi(ks_list[0]);
+            fprintf(stderr, "  key_size: %d -> %d\n", k_size, new_ks);
+            k_size = new_ks;
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse key_size_per_workload[0]='%s': %s\n",
+                    ks_list[0].c_str(), e.what());
+          }
+        }
+      }
+      // value_size
+      if (!FLAGS_value_size_per_workload.empty()) {
+        auto vs_list = ROCKSDB_NAMESPACE::StringSplit(FLAGS_value_size_per_workload, ',');
+        if (!vs_list.empty()) {
+          try {
+            int32_t new_vs = std::stoi(vs_list[0]);
+            fprintf(stderr, "  value_size: %d -> %d\n", v_size, new_vs);
+            v_size = new_vs;
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse value_size_per_workload[0]='%s': %s\n",
+                    vs_list[0].c_str(), e.what());
+          }
+        }
+      }
+      // cache_size
+      if (!FLAGS_cache_size_per_workload.empty() && cache_) {
+        auto cs_list = ROCKSDB_NAMESPACE::StringSplit(
+            FLAGS_cache_size_per_workload, ',');
+        if (!cs_list.empty()) {
+          try {
+            int64_t init_cs = std::stoll(cs_list[0]);
+            size_t old_cs = cache_->GetCapacity();
+            cache_->SetCapacity(static_cast<size_t>(init_cs));
+            fprintf(stderr,
+                    "  cache_size: %zu -> %lld (verified: %zu) %s\n",
+                    old_cs, (long long)init_cs, cache_->GetCapacity(),
+                    (cache_->GetCapacity() == static_cast<size_t>(init_cs)) ? "[OK]" : "[MISMATCH]");
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse cache_size_per_workload[0]='%s': %s\n",
+                    cs_list[0].c_str(), e.what());
+          }
+        }
+      }
+      // max_open_files
+      if (!FLAGS_open_files_per_workload.empty() && db_.db) {
+        auto of_list = ROCKSDB_NAMESPACE::StringSplit(
+            FLAGS_open_files_per_workload, ',');
+        if (!of_list.empty()) {
+          std::string init_of = of_list[0];
+          init_of.erase(0, init_of.find_first_not_of(" "));
+          init_of.erase(init_of.find_last_not_of(" ") + 1);
+          try {
+            int old_of = FLAGS_open_files;
+            Status opt_s = db_.db->SetDBOptions({{"max_open_files", init_of}});
+            if (opt_s.ok()) {
+              fprintf(stderr, "  max_open_files: %d -> %s [OK]\n", old_of, init_of.c_str());
+              FLAGS_open_files = std::stoi(init_of);
+            } else {
+              fprintf(stderr, "  max_open_files: %d -> %s [FAILED: %s]\n",
+                      old_of, init_of.c_str(), opt_s.ToString().c_str());
+            }
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse open_files_per_workload[0]='%s': %s\n",
+                    init_of.c_str(), e.what());
+          }
+        }
+      }
+      // level0_file_num_compaction_trigger
+      if (!FLAGS_level0_compaction_trigger_per_workload.empty() && db_.db) {
+        auto list = ROCKSDB_NAMESPACE::StringSplit(
+            FLAGS_level0_compaction_trigger_per_workload, ',');
+        if (!list.empty()) {
+          try {
+            std::string val = list[0];
+            val.erase(0, val.find_first_not_of(" "));
+            val.erase(val.find_last_not_of(" ") + 1);
+            int old_val = FLAGS_level0_file_num_compaction_trigger;
+            s = db_.db->SetOptions(
+                {{"level0_file_num_compaction_trigger", val}});
+            if (s.ok()) {
+              fprintf(stderr, "  level0_file_num_compaction_trigger: %d -> %s [OK]\n", old_val, val.c_str());
+              FLAGS_level0_file_num_compaction_trigger = std::stoi(val);
+            } else {
+              fprintf(stderr, "  level0_file_num_compaction_trigger: %d -> %s [FAILED: %s]\n",
+                      old_val, val.c_str(), s.ToString().c_str());
+            }
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse level0_compaction_trigger_per_workload[0]='%s': %s\n",
+                    list[0].c_str(), e.what());
+          }
+        }
+      }
+      // level0_slowdown_writes_trigger
+      if (!FLAGS_level0_slowdown_trigger_per_workload.empty() && db_.db) {
+        auto list = ROCKSDB_NAMESPACE::StringSplit(
+            FLAGS_level0_slowdown_trigger_per_workload, ',');
+        if (!list.empty()) {
+          try {
+            std::string val = list[0];
+            val.erase(0, val.find_first_not_of(" "));
+            val.erase(val.find_last_not_of(" ") + 1);
+            int old_val = FLAGS_level0_slowdown_writes_trigger;
+            s = db_.db->SetOptions(
+                {{"level0_slowdown_writes_trigger", val}});
+            if (s.ok()) {
+              fprintf(stderr, "  level0_slowdown_writes_trigger: %d -> %s [OK]\n", old_val, val.c_str());
+              FLAGS_level0_slowdown_writes_trigger = std::stoi(val);
+            } else {
+              fprintf(stderr, "  level0_slowdown_writes_trigger: %d -> %s [FAILED: %s]\n",
+                      old_val, val.c_str(), s.ToString().c_str());
+            }
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse level0_slowdown_trigger_per_workload[0]='%s': %s\n",
+                    list[0].c_str(), e.what());
+          }
+        }
+      }
+      // max_bytes_for_level_base
+      if (!FLAGS_level_base_per_workload.empty() && db_.db) {
+        auto list = ROCKSDB_NAMESPACE::StringSplit(
+            FLAGS_level_base_per_workload, ',');
+        if (!list.empty()) {
+          try {
+            std::string val = list[0];
+            val.erase(0, val.find_first_not_of(" "));
+            val.erase(val.find_last_not_of(" ") + 1);
+            uint64_t old_val = FLAGS_max_bytes_for_level_base;
+            s = db_.db->SetOptions(
+                {{"max_bytes_for_level_base", val}});
+            if (s.ok()) {
+              fprintf(stderr, "  max_bytes_for_level_base: %llu -> %s [OK]\n",
+                      (unsigned long long)old_val, val.c_str());
+              FLAGS_max_bytes_for_level_base = std::stoull(val);
+            } else {
+              fprintf(stderr, "  max_bytes_for_level_base: %llu -> %s [FAILED: %s]\n",
+                      (unsigned long long)old_val, val.c_str(), s.ToString().c_str());
+            }
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse level_base_per_workload[0]='%s': %s\n",
+                    list[0].c_str(), e.what());
+          }
+        }
+      }
+      // max_bytes_for_level_multiplier
+      if (!FLAGS_level_multiplier_per_workload.empty() && db_.db) {
+        auto list = ROCKSDB_NAMESPACE::StringSplit(
+            FLAGS_level_multiplier_per_workload, ',');
+        if (!list.empty()) {
+          try {
+            std::string val = list[0];
+            val.erase(0, val.find_first_not_of(" "));
+            val.erase(val.find_last_not_of(" ") + 1);
+            double old_val = FLAGS_max_bytes_for_level_multiplier;
+            s = db_.db->SetOptions(
+                {{"max_bytes_for_level_multiplier", val}});
+            if (s.ok()) {
+              fprintf(stderr, "  max_bytes_for_level_multiplier: %.1f -> %s [OK]\n", old_val, val.c_str());
+              FLAGS_max_bytes_for_level_multiplier = std::stod(val);
+            } else {
+              fprintf(stderr, "  max_bytes_for_level_multiplier: %.1f -> %s [FAILED: %s]\n",
+                      old_val, val.c_str(), s.ToString().c_str());
+            }
+          } catch (const std::exception& e) {
+            fprintf(stderr, "ERROR: parse level_multiplier_per_workload[0]='%s': %s\n",
+                    list[0].c_str(), e.what());
+          }
+        }
+      }
+      fprintf(stderr,
+              "==========================================================\n");
+    }
+
+    for (int64_t i = 0; i < total_workload_num; i += 1) {
       batch.Clear();
       int64_t batch_bytes = 0;
       int64_t rand_num = 0;
@@ -5937,7 +6428,360 @@ class Benchmark {
         bytesget = (16 + FLAGS_value_size);
         thread->stats.AddBytes(bytesget);
         thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kRead);
-      }else if(op_type == 1){
+      }else if(op_type == 1){ //put
+        char formatadd[20];
+        char key2[100];
+        const uint64_t k = workload_keys[i];
+        std::snprintf(formatadd, sizeof(formatadd), "%%0%dllu", k_size);
+        std::snprintf(key2, sizeof(key2), formatadd, (unsigned long long)k);
+        Slice val = gen.Generate(v_size);
+        // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val.size()); // 输出写入的键和值大小
+        batch.Put(key2, val);
+        batch_bytes += val.size() + k_size + user_timestamp_size_;
+        bytesadd += val.size() + k_size + user_timestamp_size_;
+
+        auto t_start = std::chrono::high_resolution_clock::now();
+        s = db_.db->Write(write_options_, &batch);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        double duration_us = std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(t_end - t_start).count();
+
+        thread->stats.AddBytes(bytesadd);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kWrite);
+        if (!s.ok()) {
+          fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
+          ErrorExit();
+        } 
+      }else if(op_type == 2){ // read-modify-write
+        char formatcas[20];
+        char key1[100];
+        const uint64_t k = workload_keys[i];
+        std::snprintf(formatcas, sizeof(formatcas), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatcas, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+        auto sta2 = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        bytesread = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesread);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
+        if (sta2.ok()) {
+          char format3[20];
+          char key3[100];
+          const uint64_t cask = workload_keys[i];
+          std::snprintf(format3, sizeof(format3), "%%0%dllu", k_size);
+          std::snprintf(key3, sizeof(key3), format3, (unsigned long long)cask);
+          Slice val3 = gen.Generate(v_size);
+          // fprintf(stderr, "Writing key: %s, value size: %zu\n", key, val3.size()); // 输出写入的键和值大小
+          batch.Put(key3, val3);
+          batch_bytes += val3.size() + k_size + user_timestamp_size_;
+          bytes += val3.size() + k_size + user_timestamp_size_;
+          s = db_.db->Write(write_options_, &batch);
+          thread->stats.AddBytes(bytes);
+          thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
+        }
+      }else{
+
+      }
+
+      if (i + 1 == next_workload_boundary || i + 1 == total_workload_num) {
+        if (current_workload_idx < workload_file_paths.size()) {
+          thread->stats.ReportAndResetWorkloadHistogram();
+          size_t prev_workload_idx = current_workload_idx;
+          current_workload_idx++;
+          next_workload_boundary += FLAGS_workload_num;
+          if (current_workload_idx < workload_file_paths.size() &&
+              i + 1 < total_workload_num) {
+            fprintf(stderr,
+                    "========== Workload switch: %zu (%s) -> %zu (%s) ==========\n",
+                    prev_workload_idx,
+                    workload_file_paths[prev_workload_idx].c_str(),
+                    current_workload_idx,
+                    workload_file_paths[current_workload_idx].c_str());
+
+            // Dynamic cache_size per workload
+            if (!FLAGS_cache_size_per_workload.empty() && cache_) {
+              auto cs_list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_cache_size_per_workload, ',');
+              if (current_workload_idx < cs_list.size()) {
+                size_t old_cs = cache_->GetCapacity();
+                int64_t new_cs = std::stoll(cs_list[current_workload_idx]);
+                cache_->SetCapacity(static_cast<size_t>(new_cs));
+                size_t actual_cs = cache_->GetCapacity();
+                fprintf(stderr,
+                        "  cache_size: %zu -> %lld (verified: %zu) %s\n",
+                        old_cs, (long long)new_cs, actual_cs,
+                        (actual_cs == static_cast<size_t>(new_cs)) ? "[OK]" : "[MISMATCH]");
+              }
+            }
+
+            // Dynamic max_open_files per workload
+            if (!FLAGS_open_files_per_workload.empty() && db_.db) {
+              auto of_list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_open_files_per_workload, ',');
+              if (current_workload_idx < of_list.size()) {
+                std::string new_of = of_list[current_workload_idx];
+                new_of.erase(0, new_of.find_first_not_of(" "));
+                new_of.erase(new_of.find_last_not_of(" ") + 1);
+                int old_of = FLAGS_open_files;
+                Status opt_s = db_.db->SetDBOptions(
+                    {{"max_open_files", new_of}});
+                if (opt_s.ok()) {
+                  fprintf(stderr,
+                          "  max_open_files: %d -> %s [OK]\n",
+                          old_of, new_of.c_str());
+                  FLAGS_open_files = std::stoi(new_of);
+                } else {
+                  fprintf(stderr,
+                          "  max_open_files: %d -> %s [FAILED: %s]\n",
+                          old_of, new_of.c_str(), opt_s.ToString().c_str());
+                }
+              }
+            }
+
+            // Dynamic key_size per workload
+            if (!FLAGS_key_size_per_workload.empty()) {
+              auto ks_list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_key_size_per_workload, ',');
+              if (current_workload_idx < ks_list.size()) {
+                try {
+                  int32_t new_ks = std::stoi(ks_list[current_workload_idx]);
+                  fprintf(stderr, "  key_size: %d -> %d\n", k_size, new_ks);
+                  k_size = new_ks;
+                } catch (const std::exception& e) {
+                  fprintf(stderr,
+                          "ERROR: parse key_size_per_workload[%zu]='%s': %s\n",
+                          current_workload_idx,
+                          ks_list[current_workload_idx].c_str(), e.what());
+                }
+              }
+            }
+
+            // Dynamic value_size per workload
+            if (!FLAGS_value_size_per_workload.empty()) {
+              auto vs_list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_value_size_per_workload, ',');
+              if (current_workload_idx < vs_list.size()) {
+                try {
+                  int32_t new_vs = std::stoi(vs_list[current_workload_idx]);
+                  fprintf(stderr, "  value_size: %d -> %d\n", v_size, new_vs);
+                  v_size = new_vs;
+                } catch (const std::exception& e) {
+                  fprintf(stderr,
+                          "ERROR: parse value_size_per_workload[%zu]='%s': %s\n",
+                          current_workload_idx,
+                          vs_list[current_workload_idx].c_str(), e.what());
+                }
+              }
+            }
+
+            // Dynamic level0_file_num_compaction_trigger per workload
+            if (!FLAGS_level0_compaction_trigger_per_workload.empty() && db_.db) {
+              auto list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_level0_compaction_trigger_per_workload, ',');
+              if (current_workload_idx < list.size()) {
+                try {
+                  std::string val = list[current_workload_idx];
+                  val.erase(0, val.find_first_not_of(" "));
+                  val.erase(val.find_last_not_of(" ") + 1);
+                  int old_val = FLAGS_level0_file_num_compaction_trigger;
+                  s = db_.db->SetOptions(
+                      {{"level0_file_num_compaction_trigger", val}});
+                  if (s.ok()) {
+                    fprintf(stderr, "  level0_file_num_compaction_trigger: %d -> %s [OK]\n", old_val, val.c_str());
+                    FLAGS_level0_file_num_compaction_trigger = std::stoi(val);
+                  } else {
+                    fprintf(stderr, "  level0_file_num_compaction_trigger: %d -> %s [FAILED: %s]\n",
+                            old_val, val.c_str(), s.ToString().c_str());
+                  }
+                } catch (const std::exception& e) {
+                  fprintf(stderr, "ERROR: parse level0_compaction_trigger_per_workload[%zu]='%s': %s\n",
+                          current_workload_idx, list[current_workload_idx].c_str(), e.what());
+                }
+              }
+            }
+
+            // Dynamic level0_slowdown_writes_trigger per workload
+            if (!FLAGS_level0_slowdown_trigger_per_workload.empty() && db_.db) {
+              auto list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_level0_slowdown_trigger_per_workload, ',');
+              if (current_workload_idx < list.size()) {
+                try {
+                  std::string val = list[current_workload_idx];
+                  val.erase(0, val.find_first_not_of(" "));
+                  val.erase(val.find_last_not_of(" ") + 1);
+                  int old_val = FLAGS_level0_slowdown_writes_trigger;
+                  s = db_.db->SetOptions(
+                      {{"level0_slowdown_writes_trigger", val}});
+                  if (s.ok()) {
+                    fprintf(stderr, "  level0_slowdown_writes_trigger: %d -> %s [OK]\n", old_val, val.c_str());
+                    FLAGS_level0_slowdown_writes_trigger = std::stoi(val);
+                  } else {
+                    fprintf(stderr, "  level0_slowdown_writes_trigger: %d -> %s [FAILED: %s]\n",
+                            old_val, val.c_str(), s.ToString().c_str());
+                  }
+                } catch (const std::exception& e) {
+                  fprintf(stderr, "ERROR: parse level0_slowdown_trigger_per_workload[%zu]='%s': %s\n",
+                          current_workload_idx, list[current_workload_idx].c_str(), e.what());
+                }
+              }
+            }
+
+            // Dynamic max_bytes_for_level_base per workload
+            if (!FLAGS_level_base_per_workload.empty() && db_.db) {
+              auto list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_level_base_per_workload, ',');
+              if (current_workload_idx < list.size()) {
+                try {
+                  std::string val = list[current_workload_idx];
+                  val.erase(0, val.find_first_not_of(" "));
+                  val.erase(val.find_last_not_of(" ") + 1);
+                  uint64_t old_val = FLAGS_max_bytes_for_level_base;
+                  s = db_.db->SetOptions(
+                      {{"max_bytes_for_level_base", val}});
+                  if (s.ok()) {
+                    fprintf(stderr, "  max_bytes_for_level_base: %llu -> %s [OK]\n",
+                            (unsigned long long)old_val, val.c_str());
+                    FLAGS_max_bytes_for_level_base = std::stoull(val);
+                  } else {
+                    fprintf(stderr, "  max_bytes_for_level_base: %llu -> %s [FAILED: %s]\n",
+                            (unsigned long long)old_val, val.c_str(), s.ToString().c_str());
+                  }
+                } catch (const std::exception& e) {
+                  fprintf(stderr, "ERROR: parse level_base_per_workload[%zu]='%s': %s\n",
+                          current_workload_idx, list[current_workload_idx].c_str(), e.what());
+                }
+              }
+            }
+
+            // Dynamic max_bytes_for_level_multiplier per workload
+            if (!FLAGS_level_multiplier_per_workload.empty() && db_.db) {
+              auto list = ROCKSDB_NAMESPACE::StringSplit(
+                  FLAGS_level_multiplier_per_workload, ',');
+              if (current_workload_idx < list.size()) {
+                try {
+                  std::string val = list[current_workload_idx];
+                  val.erase(0, val.find_first_not_of(" "));
+                  val.erase(val.find_last_not_of(" ") + 1);
+                  double old_val = FLAGS_max_bytes_for_level_multiplier;
+                  s = db_.db->SetOptions(
+                      {{"max_bytes_for_level_multiplier", val}});
+                  if (s.ok()) {
+                    fprintf(stderr, "  max_bytes_for_level_multiplier: %.1f -> %s [OK]\n", old_val, val.c_str());
+                    FLAGS_max_bytes_for_level_multiplier = std::stod(val);
+                  } else {
+                    fprintf(stderr, "  max_bytes_for_level_multiplier: %.1f -> %s [FAILED: %s]\n",
+                            old_val, val.c_str(), s.ToString().c_str());
+                  }
+                } catch (const std::exception& e) {
+                  fprintf(stderr, "ERROR: parse level_multiplier_per_workload[%zu]='%s': %s\n",
+                          current_workload_idx, list[current_workload_idx].c_str(), e.what());
+                }
+              }
+            }
+
+            fprintf(stderr,
+                    "==========================================================\n");
+            thread->stats.StartWorkloadHistogram(
+                workload_file_paths[current_workload_idx]);
+          }
+        }
+      }
+    }
+    fprintf(stderr, "found %lu keys during found process\n", found); // 输出总写入字节数
+    thread->stats.print_mem_usage();
+    thread->stats.printf_mem(db_.db);
+    fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
+    thread->stats.AddBytes(bytes);
+  }
+
+
+  void Do_cluster_benchmarking_withrange(ThreadState* thread, WriteMode write_mode) {
+    uint64_t num_written = 0;
+    std::string get_value;
+    uint64_t found=0;
+    ReadOptions roptions;
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      snprintf(msg, sizeof(msg), "(%" PRIu64 " ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch(/*reserved_bytes=*/0, /*max_bytes=*/0,
+                      FLAGS_write_batch_protection_bytes_per_key,
+                      user_timestamp_size_);
+    Status s;
+    int64_t bytesadd = 0;
+    int64_t bytesget = 0;
+    int64_t bytesread = 0;
+    int64_t bytes = 0;
+    int id = 0;
+
+    std::vector<uint64_t> workload_keys;      // 存储key值
+    std::vector<int> workload_operations;     // 存储操作类型：0=get, 1=set, 2=cas
+    if (!PreloadWorkloadData(workload_keys, workload_operations)) {
+      fprintf(stderr, "Failed to load workload data\n");
+      return ;
+    }
+    const std::vector<std::string> workload_file_paths = GetWorkloadFilePaths();
+    const int64_t total_workload_num =
+        static_cast<int64_t>(workload_operations.size());
+    size_t current_workload_idx = 0;
+    int64_t next_workload_boundary = FLAGS_workload_num;
+
+    // 在这里调用转换函数，把部分 GET 改成 RANGE QUERY
+    ConvertGetToRangeQuery2(workload_operations, FLAGS_range_query_percent);
+
+    fprintf(stderr, "workload_num: %ld entries_per_batch_:%ld\n The key size:%d value size:%d \n", 
+      total_workload_num, entries_per_batch_,FLAGS_key_size, FLAGS_value_size);
+
+    const int32_t k_size=FLAGS_key_size;
+    const int32_t v_size=FLAGS_value_size_;
+    fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+    if (FLAGS_ops_delay_us > 0) {
+      double max_ops_per_sec = 1000000.0 / FLAGS_ops_delay_us;
+      fprintf(stderr, "Rate limiting enabled: %ld us delay per op (max ~%.1f ops/sec)\n",FLAGS_ops_delay_us, max_ops_per_sec);
+    }
+    thread->stats.ResetLastOpTime();
+    if (!workload_file_paths.empty()) {
+      thread->stats.StartWorkloadHistogram(workload_file_paths[0]);
+    }
+    
+
+    for (int64_t i = 0; i < total_workload_num; i += 1) {
+      batch.Clear();
+      int64_t batch_bytes = 0;
+      int64_t rand_num = 0;
+
+      int op_type = workload_operations[i];
+
+      // if (i <= 10) {
+      //   const char* op_name = (op_type == 0) ? "get" : 
+      //   (op_type == 1) ? "set" : (op_type == 2) ? "cas" : "unknown";
+      //   fprintf(stdout, "Operation %zu: %s\n", i, op_name);
+      // }
+
+      if (op_type == 0){ // GET
+        char formatget[20];
+        char key1[100];
+        const uint64_t k = workload_keys[i];
+        std::snprintf(formatget, sizeof(formatget), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatget, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+
+        auto t_start = std::chrono::high_resolution_clock::now();
+        auto sta1 = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        double duration_us = std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(t_end - t_start).count();
+
+        if (sta1.ok()) {
+          found++;
+        }
+        bytesget = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesget);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kRead);
+      }else if(op_type == 1){ //put
         char formatadd[20];
         char key2[100];
         const uint64_t k = workload_keys[i];
@@ -5960,7 +6804,7 @@ class Benchmark {
           fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
           ErrorExit();
         } 
-      }else if(op_type == 2){
+      }else if(op_type == 2){ // read-modify-write
         char formatcas[20];
         char key1[100];
         const uint64_t k = workload_keys[i];
@@ -5987,14 +6831,239 @@ class Benchmark {
           thread->stats.AddBytes(bytes);
           thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
         }
+      }else if(op_type == 3){ // RANGE QUERY (Scan)
+        char formatscan[20];
+        char key_scan[100];
+        const uint64_t k = workload_keys[i];
+        std::snprintf(formatscan, sizeof(formatscan), "%%0%dllu", k_size);
+        std::snprintf(key_scan, sizeof(key_scan), formatscan, (unsigned long long)k);
+        Slice seek_key(key_scan);
+        
+        int64_t scan_length = FLAGS_scan_length;  // 你需要定义这个 FLAG，或者使用固定值
+        int64_t scanned_keys = 0;
+        int64_t bytes_scanned = 0;
+        
+        auto t_start = std::chrono::high_resolution_clock::now();
+        
+        rocksdb::Iterator* iter = db_.db->NewIterator(roptions);
+        if (iter != nullptr) {
+          iter->Seek(seek_key);
+          
+          if (iter->Valid() && iter->key().compare(seek_key) == 0) {
+            found++;  // seek 命中
+          }
+          
+          // 扫描 scan_length 个 key
+          for (int64_t j = 0; j < scan_length && iter->Valid(); j++) {
+            // 读取 key 和 value（模拟实际使用场景）
+            Slice iter_key = iter->key();
+            Slice iter_value = iter->value();
+            bytes_scanned += iter_key.size() + iter_value.size();
+            scanned_keys++;
+            iter->Next();
+            
+            if (!iter->status().ok()) {
+              fprintf(stderr, "Iterator error: %s\n", iter->status().ToString().c_str());
+              break;
+            }
+          }
+          delete iter;
+        }
+        
+        auto t_end = std::chrono::high_resolution_clock::now();
+        double duration_us = std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(t_end - t_start).count();
+        
+        thread->stats.AddBytes(bytes_scanned);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kSeek);  // 或者用 kRead
       }else{
 
+      }
+
+      if (FLAGS_ops_delay_us > 0) {
+        std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_ops_delay_us));
+      }
+
+      if (i + 1 == next_workload_boundary || i + 1 == total_workload_num) {
+        if (current_workload_idx < workload_file_paths.size()) {
+          thread->stats.ReportAndResetWorkloadHistogram();
+          current_workload_idx++;
+          next_workload_boundary += FLAGS_workload_num;
+          if (current_workload_idx < workload_file_paths.size() &&
+              i + 1 < total_workload_num) {
+            thread->stats.StartWorkloadHistogram(
+                workload_file_paths[current_workload_idx]);
+          }
+        }
       }
     }
     fprintf(stderr, "found %lu keys during found process\n", found); // 输出总写入字节数
     thread->stats.print_mem_usage();
     thread->stats.printf_mem(db_.db);
     fprintf(stderr, "Total bytes written: %ld\n", bytes); // 输出总写入字节数
+    thread->stats.AddBytes(bytes);
+  }
+
+
+
+
+  void Do_cluster_benchmarking_with_delay(ThreadState* thread, WriteMode write_mode) {
+    uint64_t num_written = 0;
+    std::string get_value;
+    uint64_t found = 0;
+    ReadOptions roptions;
+
+    if (num_ != FLAGS_num) {
+      char msg[100];
+      snprintf(msg, sizeof(msg), "(%" PRIu64 " ops)", num_);
+      thread->stats.AddMessage(msg);
+    }
+
+    RandomGenerator gen;
+    WriteBatch batch(/*reserved_bytes=*/0, /*max_bytes=*/0,
+                      FLAGS_write_batch_protection_bytes_per_key,
+                      user_timestamp_size_);
+    Status s;
+    int64_t bytesadd = 0;
+    int64_t bytesget = 0;
+    int64_t bytesread = 0;
+    int64_t bytes = 0;
+    int id = 0;
+
+    std::vector<uint64_t> workload_keys;
+    std::vector<int> workload_operations;
+    if (!PreloadWorkloadData(workload_keys, workload_operations)) {
+      fprintf(stderr, "Failed to load workload data\n");
+      return;
+    }
+    const std::vector<std::string> workload_file_paths = GetWorkloadFilePaths();
+    const int64_t total_workload_num =
+        static_cast<int64_t>(workload_operations.size());
+    size_t current_workload_idx = 0;
+    int64_t next_workload_boundary = FLAGS_workload_num;
+
+    // 打印限速配置
+    if (FLAGS_ops_delay_us > 0) {
+      double max_ops_per_sec = 1000000.0 / FLAGS_ops_delay_us;
+      fprintf(stderr, "Rate limiting enabled: %ld us delay per op (max ~%.1f ops/sec)\n", 
+              FLAGS_ops_delay_us, max_ops_per_sec);
+    }
+
+    fprintf(stderr, "workload_num: %ld entries_per_batch_:%ld\n The key size:%d value size:%d \n", 
+      total_workload_num, entries_per_batch_, FLAGS_key_size, FLAGS_value_size);
+
+    const int32_t k_size = FLAGS_key_size;
+    const int32_t v_size = FLAGS_value_size_;
+    fprintf(stderr, "The k_size:%d The v_size:%d \n", k_size, v_size);
+    thread->stats.ResetLastOpTime();
+    if (!workload_file_paths.empty()) {
+      thread->stats.StartWorkloadHistogram(workload_file_paths[0]);
+    }
+
+    for (int64_t i = 0; i < total_workload_num; i += 1) {
+      batch.Clear();
+      int64_t batch_bytes = 0;
+      int64_t rand_num = 0;
+
+      int op_type = workload_operations[i];
+
+      if (op_type == 0) { // GET
+        char formatget[20];
+        char key1[100];
+        const uint64_t k = workload_keys[i];
+        std::snprintf(formatget, sizeof(formatget), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatget, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+
+        auto t_start = std::chrono::high_resolution_clock::now();
+        auto sta1 = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        double duration_us = std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(t_end - t_start).count();
+
+        if (sta1.ok()) {
+          found++;
+        }
+        bytesget = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesget);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kRead);
+
+      } else if (op_type == 1) { // PUT
+        char formatadd[20];
+        char key2[100];
+        const uint64_t k = workload_keys[i];
+        std::snprintf(formatadd, sizeof(formatadd), "%%0%dllu", k_size);
+        std::snprintf(key2, sizeof(key2), formatadd, (unsigned long long)k);
+        Slice val = gen.Generate(FLAGS_value_size_);
+        batch.Put(key2, val);
+        batch_bytes += val.size() + k_size + user_timestamp_size_;
+        bytesadd += val.size() + k_size + user_timestamp_size_;
+
+        auto t_start = std::chrono::high_resolution_clock::now();
+        s = db_.db->Write(write_options_, &batch);
+        auto t_end = std::chrono::high_resolution_clock::now();
+        double duration_us = std::chrono::duration_cast<std::chrono::duration<double, std::micro>>(t_end - t_start).count();
+
+        thread->stats.AddBytes(bytesadd);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, duration_us, kWrite);
+        if (!s.ok()) {
+          fprintf(stderr, "Put error: %s\n", s.ToString().c_str());
+          ErrorExit();
+        }
+
+      } else if (op_type == 2) { // RMW
+        char formatcas[20];
+        char key1[100];
+        const uint64_t k = workload_keys[i];
+        std::snprintf(formatcas, sizeof(formatcas), "%%0%dllu", k_size);
+        std::snprintf(key1, sizeof(key1), formatcas, (unsigned long long)k);
+        Slice readkey(key1);
+        std::string* ts_ptr = nullptr;
+        auto sta2 = db_.db->Get(roptions, readkey, &get_value, ts_ptr);
+        bytesread = (16 + FLAGS_value_size);
+        thread->stats.AddBytes(bytesread);
+        thread->stats.FinishedOps(nullptr, db_.db, 1, kRead);
+        if (sta2.ok()) {
+          char format3[20];
+          char key3[100];
+          const uint64_t cask = workload_keys[i];
+          std::snprintf(format3, sizeof(format3), "%%0%dllu", k_size);
+          std::snprintf(key3, sizeof(key3), format3, (unsigned long long)cask);
+          Slice val3 = gen.Generate(FLAGS_value_size_);
+          batch.Put(key3, val3);
+          batch_bytes += val3.size() + k_size + user_timestamp_size_;
+          bytes += val3.size() + k_size + user_timestamp_size_;
+          s = db_.db->Write(write_options_, &batch);
+          thread->stats.AddBytes(bytes);
+          thread->stats.FinishedOps(nullptr, db_.db, 1, kWrite);
+        }
+
+      } else {
+        // 未知操作
+      }
+
+      // ========== 限速：操作完成后延迟 ==========
+      if (FLAGS_ops_delay_us > 0) {
+        std::this_thread::sleep_for(std::chrono::microseconds(FLAGS_ops_delay_us));
+      }
+
+      if (i + 1 == next_workload_boundary || i + 1 == total_workload_num) {
+        if (current_workload_idx < workload_file_paths.size()) {
+          thread->stats.ReportAndResetWorkloadHistogram();
+          current_workload_idx++;
+          next_workload_boundary += FLAGS_workload_num;
+          if (current_workload_idx < workload_file_paths.size() &&
+              i + 1 < total_workload_num) {
+            thread->stats.StartWorkloadHistogram(
+                workload_file_paths[current_workload_idx]);
+          }
+        }
+      }
+    }
+
+    fprintf(stderr, "found %lu keys during found process\n", found);
+    thread->stats.print_mem_usage();
+    thread->stats.printf_mem(db_.db);
+    fprintf(stderr, "Total bytes written: %ld\n", bytes);
     thread->stats.AddBytes(bytes);
   }
 

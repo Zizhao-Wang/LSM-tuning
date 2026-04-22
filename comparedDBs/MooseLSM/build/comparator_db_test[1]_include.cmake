@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/comparator_db_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/comparator_db_test[1]_tests.cmake")
+else()
+  add_test(comparator_db_test_NOT_BUILT comparator_db_test_NOT_BUILT)
+endif()

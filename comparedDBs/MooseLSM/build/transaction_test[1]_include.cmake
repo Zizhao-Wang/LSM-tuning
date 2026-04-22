@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/transaction_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/transaction_test[1]_tests.cmake")
+else()
+  add_test(transaction_test_NOT_BUILT transaction_test_NOT_BUILT)
+endif()

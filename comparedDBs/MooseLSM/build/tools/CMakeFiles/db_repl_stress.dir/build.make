@@ -73,15 +73,15 @@ tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o: tools/CMakeFiles/db_rep
 tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o: ../tools/db_repl_stress.cc
 tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o: tools/CMakeFiles/db_repl_stress.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o -MF CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o.d -o CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/db_repl_stress.cc
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o -MF CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o.d -o CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/db_repl_stress.cc
 
 tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.i"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/db_repl_stress.cc > CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.i
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/db_repl_stress.cc > CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.i
 
 tools/CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.s"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/db_repl_stress.cc -o CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.s
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/db_repl_stress.cc -o CMakeFiles/db_repl_stress.dir/db_repl_stress.cc.s
 
 # Object files for target db_repl_stress
 db_repl_stress_OBJECTS = \

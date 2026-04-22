@@ -75,22 +75,22 @@ convert_to_billion_format() {
     fi
 }
 
-for i in 35 40 49 51 30 1; do
-    dir1="RocksDB_SATASSD_MultiTwitterClusters_Benchmarking_Performance2"
+for i in 12; do
+    dir1="autumnDB_SATASSD_MultiTwitterClusters_Benchmarking_Performance_dbtest2"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
         cd $dir1
             for cluster_a in "$i"; do  # 
-                for ct0 in 1 2 4 ; do  # 
-                for mb in 300 512 800; do
+                for ct0 in 4 ; do  # 
+                for mb in 512; do
                 for buffer_size in 67108864; do
                 for workload_kvs in 100000000 ; do 
                     num_format2=$(convert_to_billion_format "$workload_kvs")
                     stats_interva=$((workload_kvs / 10))
                     echo "原始值: $workload_kvs, 转换后: $num_format2"
                     for blk_cache_size in 8; do
-                    for table_cache_size in 0 20 50 100 500; do
+                    for table_cache_size in 200; do
 
                         # buffer_size=67108864
                         # buffer_size=2097152
@@ -102,7 +102,8 @@ for i in 35 40 49 51 30 1; do
                         key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
                         log_file="RocksDB_${num_format2}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"
-                        data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                        # data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                        data_file="/mnt/workloads/second_cluster${cluster_a}.sort" # 构建数据文件路径
                         memory_log_file="$(pwd)/RocksDB_Memory_${num_format2}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}_L1${mb}_Blkcache${blk_cache_size}_Tabcache${table_cache_size}.log"      
 
                         # 如果日志文件存在，则跳过当前迭代
@@ -127,7 +128,7 @@ for i in 35 40 49 51 30 1; do
                         echo "$num_format2"
 
                                 
-                        ../../../rocksdb/release/db_bench \
+                        ../../../rocksdb_autumn/release/db_bench \
                             --db=$db_dir \
                             --max_bytes_for_level_base=$level1_max_bytes \
                             --workload_num=$workload_kvs \

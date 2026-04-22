@@ -73,15 +73,15 @@ CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o: CM
 CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o: ../db/range_del_aggregator_bench.cc
 CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o: CMakeFiles/range_del_aggregator_bench.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o -MF CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o.d -o CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/db/range_del_aggregator_bench.cc
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o -MF CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o.d -o CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/db/range_del_aggregator_bench.cc
 
 CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.i"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/db/range_del_aggregator_bench.cc > CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.i
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/db/range_del_aggregator_bench.cc > CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.i
 
 CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.s"
-	/usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/db/range_del_aggregator_bench.cc -o CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.s
+	/usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/db/range_del_aggregator_bench.cc -o CMakeFiles/range_del_aggregator_bench.dir/db/range_del_aggregator_bench.cc.s
 
 # Object files for target range_del_aggregator_bench
 range_del_aggregator_bench_OBJECTS = \

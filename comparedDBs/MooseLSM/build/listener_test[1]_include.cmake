@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/listener_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/listener_test[1]_tests.cmake")
+else()
+  add_test(listener_test_NOT_BUILT listener_test_NOT_BUILT)
+endif()

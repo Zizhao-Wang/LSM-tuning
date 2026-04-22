@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/mock_env_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/mock_env_test[1]_tests.cmake")
+else()
+  add_test(mock_env_test_NOT_BUILT mock_env_test_NOT_BUILT)
+endif()

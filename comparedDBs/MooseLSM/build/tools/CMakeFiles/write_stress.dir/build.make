@@ -73,15 +73,15 @@ tools/CMakeFiles/write_stress.dir/write_stress.cc.o: tools/CMakeFiles/write_stre
 tools/CMakeFiles/write_stress.dir/write_stress.cc.o: ../tools/write_stress.cc
 tools/CMakeFiles/write_stress.dir/write_stress.cc.o: tools/CMakeFiles/write_stress.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object tools/CMakeFiles/write_stress.dir/write_stress.cc.o"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/write_stress.dir/write_stress.cc.o -MF CMakeFiles/write_stress.dir/write_stress.cc.o.d -o CMakeFiles/write_stress.dir/write_stress.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/write_stress.cc
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/write_stress.dir/write_stress.cc.o -MF CMakeFiles/write_stress.dir/write_stress.cc.o.d -o CMakeFiles/write_stress.dir/write_stress.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/write_stress.cc
 
 tools/CMakeFiles/write_stress.dir/write_stress.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/write_stress.dir/write_stress.cc.i"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/write_stress.cc > CMakeFiles/write_stress.dir/write_stress.cc.i
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/write_stress.cc > CMakeFiles/write_stress.dir/write_stress.cc.i
 
 tools/CMakeFiles/write_stress.dir/write_stress.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/write_stress.dir/write_stress.cc.s"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/write_stress.cc -o CMakeFiles/write_stress.dir/write_stress.cc.s
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/write_stress.cc -o CMakeFiles/write_stress.dir/write_stress.cc.s
 
 # Object files for target write_stress
 write_stress_OBJECTS = \

@@ -73,15 +73,15 @@ tools/CMakeFiles/sst_dump.dir/sst_dump.cc.o: tools/CMakeFiles/sst_dump.dir/flags
 tools/CMakeFiles/sst_dump.dir/sst_dump.cc.o: ../tools/sst_dump.cc
 tools/CMakeFiles/sst_dump.dir/sst_dump.cc.o: tools/CMakeFiles/sst_dump.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object tools/CMakeFiles/sst_dump.dir/sst_dump.cc.o"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/sst_dump.dir/sst_dump.cc.o -MF CMakeFiles/sst_dump.dir/sst_dump.cc.o.d -o CMakeFiles/sst_dump.dir/sst_dump.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/sst_dump.cc
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/sst_dump.dir/sst_dump.cc.o -MF CMakeFiles/sst_dump.dir/sst_dump.cc.o.d -o CMakeFiles/sst_dump.dir/sst_dump.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/sst_dump.cc
 
 tools/CMakeFiles/sst_dump.dir/sst_dump.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/sst_dump.dir/sst_dump.cc.i"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/sst_dump.cc > CMakeFiles/sst_dump.dir/sst_dump.cc.i
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/sst_dump.cc > CMakeFiles/sst_dump.dir/sst_dump.cc.i
 
 tools/CMakeFiles/sst_dump.dir/sst_dump.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/sst_dump.dir/sst_dump.cc.s"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/sst_dump.cc -o CMakeFiles/sst_dump.dir/sst_dump.cc.s
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/sst_dump.cc -o CMakeFiles/sst_dump.dir/sst_dump.cc.s
 
 # Object files for target sst_dump
 sst_dump_OBJECTS = \

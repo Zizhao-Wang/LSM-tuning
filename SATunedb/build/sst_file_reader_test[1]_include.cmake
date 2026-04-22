@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/sst_file_reader_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/SAunedb/build/sst_file_reader_test[1]_tests.cmake")
+else()
+  add_test(sst_file_reader_test_NOT_BUILT sst_file_reader_test_NOT_BUILT)
+endif()

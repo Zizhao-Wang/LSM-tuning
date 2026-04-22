@@ -73,15 +73,15 @@ tools/CMakeFiles/rw_test.dir/rw_test.cc.o: tools/CMakeFiles/rw_test.dir/flags.ma
 tools/CMakeFiles/rw_test.dir/rw_test.cc.o: ../tools/rw_test.cc
 tools/CMakeFiles/rw_test.dir/rw_test.cc.o: tools/CMakeFiles/rw_test.dir/compiler_depend.ts
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green --progress-dir=/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/CMakeFiles --progress-num=$(CMAKE_PROGRESS_1) "Building CXX object tools/CMakeFiles/rw_test.dir/rw_test.cc.o"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/rw_test.dir/rw_test.cc.o -MF CMakeFiles/rw_test.dir/rw_test.cc.o.d -o CMakeFiles/rw_test.dir/rw_test.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/rw_test.cc
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -MD -MT tools/CMakeFiles/rw_test.dir/rw_test.cc.o -MF CMakeFiles/rw_test.dir/rw_test.cc.o.d -o CMakeFiles/rw_test.dir/rw_test.cc.o -c /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/rw_test.cc
 
 tools/CMakeFiles/rw_test.dir/rw_test.cc.i: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Preprocessing CXX source to CMakeFiles/rw_test.dir/rw_test.cc.i"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/rw_test.cc > CMakeFiles/rw_test.dir/rw_test.cc.i
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -E /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/rw_test.cc > CMakeFiles/rw_test.dir/rw_test.cc.i
 
 tools/CMakeFiles/rw_test.dir/rw_test.cc.s: cmake_force
 	@$(CMAKE_COMMAND) -E cmake_echo_color --switch=$(COLOR) --green "Compiling CXX source to assembly CMakeFiles/rw_test.dir/rw_test.cc.s"
-	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/c++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/rw_test.cc -o CMakeFiles/rw_test.dir/rw_test.cc.s
+	cd /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/tools && /usr/bin/g++ $(CXX_DEFINES) $(CXX_INCLUDES) $(CXX_FLAGS) -S /home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/tools/rw_test.cc -o CMakeFiles/rw_test.dir/rw_test.cc.s
 
 # Object files for target rw_test
 rw_test_OBJECTS = \

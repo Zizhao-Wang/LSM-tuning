@@ -31,7 +31,8 @@ cluster_key_size_map[30]=22
 cluster_key_size_map[35]=24
 cluster_key_size_map[51]=44	
 cluster_key_size_map[40]=24
-cluster_key_size_map[49]=44	
+cluster_key_size_map[49]=44
+cluster_key_size_map[12]=44	
 
 cluster_value_size_map[1]=1000
 cluster_value_size_map[13]=4266
@@ -40,14 +41,15 @@ cluster_value_size_map[30]=1000
 cluster_value_size_map[35]=1000
 cluster_value_size_map[51]=1000
 cluster_value_size_map[40]=1000
+cluster_value_size_map[12]=1030
 cluster_value_size_map[49]=1000
 
 declare -A table_cache_size
 
-cluster_table_size_map[35]=20
+cluster_table_size_map[35]=0
 cluster_table_size_map[40]=100
 cluster_table_size_map[49]=8
-cluster_table_size_map[51]=3
+cluster_table_size_map[51]=0
 cluster_table_size_map[30]=8
 cluster_table_size_map[1]=0
 cluster_table_size_map[48]=300
@@ -84,8 +86,8 @@ convert_to_billion_format() {
 
 READ_RATIOS=(0.0)
 
-for i in 40 49  ; do # 40 49 35 51 30 1
-    dir1="10B_Smoose_SATASSD_MultiTwitterClusters_Benchmarking_Performance_pmem0"
+for i in 12; do # 40 49 35 51 30 1
+    dir1="10B_Smoose_SATASSD_MultiClusters_Benchmarking_pmem0_memory_WithStdDev"
     if [ ! -d "$dir1" ]; then
         mkdir $dir1
     fi
@@ -99,8 +101,8 @@ for i in 40 49  ; do # 40 49 35 51 30 1
                     num_format=$(convert_to_billion_format "$num_kvs")
                     echo "原始值: $num_kvs, 转换后: $num_format"
                 for read_ratio in "${READ_RATIOS[@]}"; do
-                for blk_cache_size in  0 ${cluster_block_cache_size_map[$cluster_a]} ; do
-                for table_cache_size in 0 ${cluster_table_size_map[$cluster_a]}; do
+                for blk_cache_size in  ${cluster_block_cache_size_map[$cluster_a]} ; do
+                for table_cache_size in ${cluster_table_size_map[$cluster_a]}; do
                 for perf_tier in 1 ; do
                     write_ratio=$(echo "1.0 - $read_ratio" | bc)
                     
@@ -111,7 +113,8 @@ for i in 40 49  ; do # 40 49 35 51 30 1
                     key_size_twitter=${cluster_key_size_map[$cluster_a]}
 
                     log_file="Smoose_PreLoad_${num_format}_key${key_size_twitter}_val${value_size_twitter}_mem${buffer_size_mb}MB_Cluster${cluster_a}_CT0${ct0}_L1${mb}_read_${read_ratio}_write_${write_ratio}Table${table_cache_size}BlockCache${blk_cache_size}Perf${perf_tier}.log"
-                    data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                    # data_file="/mnt/nvm/second_cluster${cluster_a}.sort" # 构建数据文件路径
+                    data_file="/mnt/workloads/second_cluster${cluster_a}.sort" # 构建数据文件路径
                     memory_log_file="$(pwd)/Smoose_PreLoadMemory_${num_format}_key${key_size_twitter}_val${value_size_twitter}_Cluster${cluster_a}_mem${buffer_size_mb}MiB_CT0${ct0}.log"      
 
                     # 如果日志文件存在，则跳过当前迭代

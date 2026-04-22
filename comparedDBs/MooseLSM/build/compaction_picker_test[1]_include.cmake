@@ -1,0 +1,5 @@
+if(EXISTS "/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/compaction_picker_test[1]_tests.cmake")
+  include("/home/jeff-wang/LSM-tuning/comparedDBs/MooseLSM/build/compaction_picker_test[1]_tests.cmake")
+else()
+  add_test(compaction_picker_test_NOT_BUILT compaction_picker_test_NOT_BUILT)
+endif()
